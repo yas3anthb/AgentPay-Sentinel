@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    @apply bg-ink text-chalk antialiased;
+  }
+
+  /* Hairline grid: reads as instrumentation, not decoration. */
+  body {
+    background-image:
+      linear-gradient(to right, rgb(23 33 44 / 0.35) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(23 33 44 / 0.35) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-signal-idle/25 text-chalk;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-signal-idle/70 ring-offset-2 ring-offset-ink;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-hairline bg-ink-raised/80 shadow-panel backdrop-blur-sm;
+  }
+
+  .label-xs {
+    @apply font-mono text-[10px] uppercase tracking-[0.14em] text-chalk-faint;
+  }
+
+  .hairline-t {
+    @apply border-t border-hairline;
+  }
+}
+
+/*
+ * Respect the user's motion preference everywhere, including the 3D scene's
+ * idle rotation and the beam animation. The information is identical either
+ * way — only the movement stops.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

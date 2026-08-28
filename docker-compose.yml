@@ -1,0 +1,194 @@
+name: agentpay-sentinel
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentpay
+      POSTGRES_PASSWORD: agentpay
+      POSTGRES_DB: agentpay
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentpay"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # The Policy Decision Point. Runs as its own service so the decision surface
+  # is separately deployable, separately versioned, and separately auditable.
+  opa:
+    image: openpolicyagent/opa:1.0.0
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=error"
+      - "/policies"
+    volumes:
+      - ./policies:/policies:ro
+    healthcheck:
+      test: ["CMD", "/opa", "eval", "--fail", "data"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  provider:
+    build: .
+    entrypoint: ["/app/docker-entrypoint.sh"]
+    command: ["uvicorn", "mock_provider.main:app", "--host", "0.0.0.0", "--port", "9100"]
+    environment:
+      PROVIDER_BEHAVIOUR: ${PROVIDER_BEHAVIOUR:-success}
+      PROVIDER_TIMEOUT_DELAY: ${PROVIDER_TIMEOUT_DELAY:-30}
+      JWT_PUBLIC_KEY_PATH: keys/delegation_public.pem
+      JWT_PRIVATE_KEY_PATH: keys/delegation_private.pem
+    volumes:
+      - ./docker-entrypoint.sh:/app/docker-entrypoint.sh:ro
+      - keys:/app/keys
+    ports:
+      - "9100:9100"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  gateway:
+    build: .
+    entrypoint: ["/app/docker-entrypoint.sh"]
+    command: ["uvicorn", "gateway.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
+      DATABASE_URL: postgresql+asyncpg://agentpay:agentpay@postgres:5432/agentpay
+      REDIS_URL: redis://redis:6379/0
+      OPA_URL: http://opa:8181
+      PROVIDER_URL: http://provider:9100
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      ALLOW_DEGRADED_CLASSIFIER: ${ALLOW_DEGRADED_CLASSIFIER:-false}
+      CLASSIFIER_OFFLINE: ${CLASSIFIER_OFFLINE:-false}
+    volumes:
+      - ./docker-entrypoint.sh:/app/docker-entrypoint.sh:ro
+      - keys:/app/keys
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opa:
+        condition: service_started
+      provider:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Read-only WebSocket fan-out for the gateway's pipeline stage events.
+  # Owns the long-lived connections so the payment path does not have to.
+  # The gateway does not depend on this being up.
+  event-relay:
+    build:
+      context: .
+      dockerfile: apps/event-relay/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      PIPELINE_CHANNEL: agentpay:pipeline
+    ports:
+      - "9300:9300"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9300/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # The AI agent: a CrewAI crew orchestrated by LangGraph whose only
+  # money-moving tool is the Sentinel gateway. Runs in its own image because
+  # its framework tree pins pydantic/openai versions the gateway cannot use.
+  agent-simulator:
+    build:
+      context: .
+      dockerfile: apps/agent-simulator/Dockerfile
+    environment:
+      GATEWAY_URL: http://gateway:8080
+      PROVIDER_URL: http://provider:9100
+      AGENT_LLM_MODE: ${AGENT_LLM_MODE:-live}
+      AGENT_OPENAI_API_KEY: ${AGENT_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}
+      AGENT_MODEL: ${AGENT_MODEL:-gpt-4o-mini}
+      CREW_VERBOSE: ${CREW_VERBOSE:-false}
+    ports:
+      - "9200:9200"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9200/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  dashboard:
+    build: .
+    command:
+      - "streamlit"
+      - "run"
+      - "dashboard/app.py"
+      - "--server.port=8501"
+      - "--server.address=0.0.0.0"
+      - "--server.headless=true"
+      - "--browser.gatherUsageStats=false"
+    environment:
+      GATEWAY_URL: http://gateway:8080
+    ports:
+      - "8501:8501"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  # The product frontend. Proxies both backends server-side, so the browser
+  # never talks to the gateway cross-origin.
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      GATEWAY_ORIGIN: http://gateway:8080
+      SIMULATOR_ORIGIN: http://agent-simulator:9200
+      NEXT_PUBLIC_RELAY_WS_URL: ws://localhost:9300
+      POLICIES_DIR: /policies
+    ports:
+      - "3000:3000"
+    depends_on:
+      gateway:
+        condition: service_healthy
+      agent-simulator:
+        condition: service_started
+      event-relay:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:
+  keys:
