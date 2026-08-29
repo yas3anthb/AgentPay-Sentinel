@@ -11,7 +11,10 @@ export type Scenario = "clean" | "adversarial" | "approval" | "raw";
 export interface ScenarioDef {
   id: Scenario;
   label: string;
+  /** One plain-language sentence a non-technical reader understands at a glance. */
   description: string;
+  /** The precise mechanism. Shown as secondary, smaller text — never the lead. */
+  technical: string;
   /** null for the raw path, which bypasses the agent entirely. */
   path: string | null;
 }
@@ -20,28 +23,30 @@ export const SCENARIOS: ScenarioDef[] = [
   {
     id: "clean",
     label: "Clean purchase",
-    description: "The crew researches, builds a cart, the reviewer signs off, Sentinel allows it.",
+    description: "Runs a normal purchase end to end and approves it.",
+    technical: "The agent researches, builds a cart, a reviewer signs off, Sentinel allows it.",
     path: "/simulate/clean-purchase",
   },
   {
     id: "adversarial",
-    label: "Adversarial (injected merchant content)",
-    description:
-      "The top search result is a poisoned product page. The injection reaches the agent verbatim; Sentinel is what stops it.",
+    label: "Adversarial content",
+    description: "Simulates an attack hidden in a product page, and shows it being stopped.",
+    technical:
+      "The top search result is a poisoned page. The injection reaches the agent verbatim; Sentinel is what blocks it.",
     path: "/simulate/adversarial",
   },
   {
     id: "approval",
-    label: "Approval-required",
-    description:
-      "Over the delegated approval threshold. The graph pauses on an interrupt — it does not poll.",
+    label: "Needs approval",
+    description: "A purchase large enough to require a human's sign-off before it proceeds.",
+    technical: "Over the delegated approval threshold. The workflow pauses on an interrupt — it does not poll.",
     path: "/simulate/approval-flow",
   },
   {
     id: "raw",
-    label: "Raw payment intent (bypass the agent)",
-    description:
-      "Posts straight to the gateway with no agent in the loop, for probing the policy engine on its own.",
+    label: "Raw payment request",
+    description: "Sends a payment request directly, with no agent involved.",
+    technical: "Posts straight to the gateway, for probing the policy engine on its own.",
     path: null,
   },
 ];

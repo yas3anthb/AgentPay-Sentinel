@@ -9,7 +9,9 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-import { Badge, decisionTone } from "@/components/ui/badge";
+import { CheckCircle2, ShieldAlert } from "lucide-react";
+
+import { Badge, decisionTone, DecisionPill } from "@/components/ui/badge";
 import { Field } from "@/components/ui/panel";
 import type { RunSummary } from "@/lib/api/transcript";
 import type { DecisionResponse } from "@/lib/api/gateway";
@@ -82,6 +84,7 @@ export function DecisionCard({
   isAdversarial?: boolean;
 }) {
   const tone = decisionTone(view.decision);
+  const chartColor = tone === "block" ? "#C2334A" : tone === "approval" ? "#9A5B00" : "#0F7A4E";
   const data = SIGNALS.map((signal) => ({
     signal: signal.label,
     value: Number(view.signals[signal.key] ?? 0),
@@ -89,43 +92,41 @@ export function DecisionCard({
   }));
 
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={tone} className="px-2 py-1 text-[11px]">
-          {view.decision ?? "no decision"}
-        </Badge>
+        <DecisionPill decision={view.decision} className="px-2.5 py-1" />
         {view.state ? <Badge tone="neutral">{view.state}</Badge> : null}
         {view.policyVersion ? (
-          <span className="font-mono text-[10px] text-chalk-faint">
-            policy {view.policyVersion}
-          </span>
+          <span className="font-mono text-data text-ink-muted">Policy {view.policyVersion}</span>
         ) : null}
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {view.reasonCodes.map((code) => (
-          <Badge key={code} tone={tone}>
-            {code}
-          </Badge>
-        ))}
-      </div>
+      {view.reasonCodes.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {view.reasonCodes.map((code) => (
+            <Badge key={code} tone="neutral" className="font-mono normal-case tracking-normal">
+              {code}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
 
       {/* The classifier's real mode, read off this transaction rather than guessed. */}
       {view.classifierDegraded !== null ? (
         <div
           className={cn(
-            "rounded border px-3 py-2 text-[11px] leading-relaxed",
+            "rounded-control border px-3 py-2.5 text-caption",
             view.classifierDegraded
-              ? "border-signal-approval/40 bg-signal-approval/[0.07] text-chalk-muted"
-              : "border-hairline bg-ink/50 text-chalk-faint",
+              ? "border-notice-line bg-notice-tint text-notice"
+              : "border-line bg-surface-sunken text-ink-secondary",
           )}
         >
-          <span className="font-mono uppercase tracking-wider">
-            classifier {view.classifierDegraded ? "degraded" : "live"}
+          <span className="font-medium">
+            {view.classifierDegraded ? "Content classifier degraded" : "Content classifier live"}
           </span>
           {" — "}
           {view.classifierDegraded
-            ? "no classifier verdict for this transaction. It proceeded only because the policy was configured to tolerate that."
+            ? "no classifier verdict for this transaction. It proceeded only because policy was configured to tolerate that."
             : "the injection classifier returned a verdict for this transaction."}
         </div>
       ) : null}
@@ -134,51 +135,93 @@ export function DecisionCard({
         <ProviderDelta delta={providerDelta} emphasised={Boolean(isAdversarial)} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="authorization id" value={view.paymentAuthorizationId ?? "—"} />
-        <Field label="audit hash" value={shortHash(view.auditHash, 18)} />
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Authorization ID" value={view.paymentAuthorizationId ?? "—"} mono />
+        <Field label="Audit hash" value={shortHash(view.auditHash, 18)} mono />
       </div>
 
       <div>
-        <div className="mb-1 flex items-baseline justify-between">
-          <span className="label-xs">risk signals</span>
-          <span className="font-mono text-[11px] text-chalk">
-            {view.weightedScore ?? "—"}
-            <span className="text-chalk-faint"> / 100</span>
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <span className="label">Risk signals</span>
+          <span className="text-caption text-ink">
+            <span className="font-mono">{view.weightedScore ?? "—"}</span>
+            <span className="text-ink-muted"> / 100</span>
           </span>
         </div>
+
+        {/* The formula, stated once, so the final score is never a bare
+            number — a technical reviewer can see exactly how it was derived. */}
+        <p className="mb-2 overflow-x-auto whitespace-nowrap font-mono text-data text-ink-secondary">
+          R = {SIGNALS.map((s) => `${s.weight}·${s.label}`).join(" + ")}
+        </p>
+
         <div className="h-[190px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={data} outerRadius="72%">
-              <PolarGrid stroke="#1A2430" />
+              <PolarGrid stroke="#E3E6EB" />
               <PolarAngleAxis
                 dataKey="signal"
-                tick={{ fill: "#6B7C8E", fontSize: 9, fontFamily: "var(--font-geist-mono)" }}
+                tick={{ fill: "#5A6577", fontSize: 11, fontFamily: "var(--font-inter)" }}
               />
               <PolarRadiusAxis domain={[0, 1]} tick={false} axisLine={false} />
               <Radar
                 dataKey="value"
-                stroke={tone === "block" ? "#F2637A" : tone === "approval" ? "#E0A340" : "#4EC9C0"}
-                fill={tone === "block" ? "#F2637A" : tone === "approval" ? "#E0A340" : "#4EC9C0"}
-                fillOpacity={0.18}
-                strokeWidth={1.4}
+                stroke={chartColor}
+                fill={chartColor}
+                fillOpacity={0.14}
+                strokeWidth={1.5}
                 isAnimationActive={false}
               />
             </RadarChart>
           </ResponsiveContainer>
         </div>
-        <ul className="mt-1 grid grid-cols-5 gap-1">
-          {data.map((d) => (
-            <li key={d.signal} className="text-center">
-              <div className="font-mono text-[10px] tabular-nums text-chalk">
-                {d.value.toFixed(2)}
-              </div>
-              <div className="font-mono text-[8px] uppercase tracking-wide text-chalk-faint">
-                {d.signal} · {d.weight}%
-              </div>
-            </li>
-          ))}
-        </ul>
+
+        {/* The arithmetic, connected: value × weight = contribution, summed to
+            the score shown above — not two disconnected facts. */}
+        <div className="mt-1 overflow-x-auto">
+          <table className="w-full min-w-[420px] border-collapse text-center">
+            <thead>
+              <tr className="border-b border-line">
+                <th className="label px-1 py-1 text-left font-medium">Signal</th>
+                {data.map((d) => (
+                  <th key={d.signal} className="label px-1 py-1 font-medium">
+                    {d.signal}
+                  </th>
+                ))}
+                <th className="label px-1 py-1 font-medium text-ink">= R</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-line">
+                <td className="px-1 py-1.5 text-left text-label text-ink-muted">Value</td>
+                {data.map((d) => (
+                  <td key={d.signal} className="px-1 py-1.5 font-mono text-data tabular-nums text-ink">
+                    {d.value.toFixed(2)}
+                  </td>
+                ))}
+                <td rowSpan={3} className="px-1 py-1.5 align-middle font-mono text-section tabular-nums text-ink">
+                  {view.weightedScore ?? "—"}
+                </td>
+              </tr>
+              <tr className="border-b border-line">
+                <td className="px-1 py-1.5 text-left text-label text-ink-muted">Weight</td>
+                {data.map((d) => (
+                  <td key={d.signal} className="px-1 py-1.5 font-mono text-data tabular-nums text-ink-secondary">
+                    ×{d.weight}%
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="px-1 py-1.5 text-left text-label text-ink-muted">Contribution</td>
+                {data.map((d) => (
+                  <td key={d.signal} className="px-1 py-1.5 font-mono text-data tabular-nums text-accent">
+                    {(d.value * d.weight).toFixed(1)}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -190,29 +233,37 @@ export function DecisionCard({
  */
 function ProviderDelta({ delta, emphasised }: { delta: number; emphasised: boolean }) {
   const contained = delta === 0;
+  const Icon = contained ? CheckCircle2 : ShieldAlert;
   return (
     <div
       className={cn(
-        "rounded border px-3 py-2.5",
+        "rounded-control border px-3.5 py-3",
         contained && emphasised
-          ? "border-signal-allow/50 bg-signal-allow/[0.08]"
-          : "border-hairline bg-ink/50",
-        !contained && emphasised && "border-signal-block/50 bg-signal-block/[0.08]",
+          ? "border-allow-line bg-allow-tint"
+          : !contained && emphasised
+            ? "border-block-line bg-block-tint"
+            : "border-line bg-surface-sunken",
       )}
     >
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="label-xs">payment provider calls</span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Icon
+            size={16}
+            className={contained && emphasised ? "text-allow" : !contained && emphasised ? "text-block" : "text-ink-muted"}
+          />
+          <span className="label">Payment provider calls</span>
+        </div>
         <span
           className={cn(
-            "font-mono text-lg tabular-nums leading-none",
-            contained ? "text-signal-allow" : "text-chalk",
+            "font-mono text-section tabular-nums",
+            contained && emphasised ? "text-allow" : !contained && emphasised ? "text-block" : "text-ink",
           )}
         >
           {delta}
         </span>
       </div>
       {emphasised ? (
-        <p className="mt-1.5 text-[11px] leading-relaxed text-chalk-muted">
+        <p className="mt-1.5 text-caption text-ink-secondary">
           {contained
             ? "The provider was never contacted. The block happened before any token existed, so there was no credential that could have reached it."
             : "The provider WAS contacted on a blocked run — containment failure."}

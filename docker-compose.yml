@@ -145,24 +145,6 @@ services:
       timeout: 5s
       retries: 20
 
-  dashboard:
-    build: .
-    command:
-      - "streamlit"
-      - "run"
-      - "dashboard/app.py"
-      - "--server.port=8501"
-      - "--server.address=0.0.0.0"
-      - "--server.headless=true"
-      - "--browser.gatherUsageStats=false"
-    environment:
-      GATEWAY_URL: http://gateway:8080
-    ports:
-      - "8501:8501"
-    depends_on:
-      gateway:
-        condition: service_healthy
-
   # The product frontend. Proxies both backends server-side, so the browser
   # never talks to the gateway cross-origin.
   web:
@@ -172,6 +154,7 @@ services:
     environment:
       GATEWAY_ORIGIN: http://gateway:8080
       SIMULATOR_ORIGIN: http://agent-simulator:9200
+      PROVIDER_ORIGIN: http://provider:9100
       NEXT_PUBLIC_RELAY_WS_URL: ws://localhost:9300
       POLICIES_DIR: /policies
     ports:

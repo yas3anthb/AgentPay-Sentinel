@@ -6,72 +6,78 @@ import { usePrefersReducedMotion } from "@/lib/use-stage-events";
 /**
  * The idle pipeline shown on the Overview page.
  *
- * Deliberately 2D and cheap: the landing page should not pay for a WebGL
- * context, and this doubles as the reduced-motion presentation. The real scene
- * lives in the Test Console, where it is driven by actual events.
+ * Deliberately lightweight SVG, not WebGL — the landing page should not pay
+ * for a 3D context just to preview the product. Rounded nodes on a light
+ * ground, matching the Test Console's step tracker so the preview reads as
+ * the same system rather than a different diagram.
  */
 export function IdlePipelinePreview() {
   const reduced = usePrefersReducedMotion();
 
   return (
-    <div className="relative h-[260px] w-full">
+    <div className="relative flex h-[260px] w-full items-center bg-surface-sunken">
       <svg
-        viewBox="0 0 520 260"
+        viewBox="0 0 520 200"
         className="h-full w-full"
         role="img"
         aria-label="The seven enforcement stages, idle"
       >
         <defs>
           <linearGradient id="beam" x1="0" x2="1">
-            <stop offset="0%" stopColor="#4EC9C0" stopOpacity="0" />
-            <stop offset="50%" stopColor="#4EC9C0" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="#4EC9C0" stopOpacity="0" />
+            <stop offset="0%" stopColor="#4F46E5" stopOpacity="0" />
+            <stop offset="50%" stopColor="#4F46E5" stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#4F46E5" stopOpacity="0" />
           </linearGradient>
         </defs>
 
-        <line x1="40" y1="130" x2="480" y2="130" stroke="#17212C" strokeWidth="1" />
+        <line x1="46" y1="100" x2="474" y2="100" stroke="#E3E6EB" strokeWidth="2" />
         {!reduced ? (
           <line
-            x1="40"
-            y1="130"
-            x2="480"
-            y2="130"
+            x1="46"
+            y1="100"
+            x2="474"
+            y2="100"
             stroke="url(#beam)"
-            strokeWidth="1.5"
-            strokeDasharray="70 370"
+            strokeWidth="2"
+            strokeDasharray="80 348"
           >
             <animate
               attributeName="stroke-dashoffset"
-              from="440"
-              to="-70"
-              dur="4.5s"
+              from="428"
+              to="-80"
+              dur="5s"
               repeatCount="indefinite"
             />
           </line>
         ) : null}
 
         {STAGES.map((stage, i) => {
-          const x = 40 + i * (440 / (STAGES.length - 1));
+          const x = 46 + i * (428 / (STAGES.length - 1));
           return (
             <g key={stage.id}>
               <rect
-                x={x - 9}
-                y={121}
-                width={18}
-                height={18}
-                rx={2}
-                transform={`rotate(45 ${x} 130)`}
-                fill="none"
-                stroke="#243343"
-                strokeWidth="1"
+                x={x - 15}
+                y={85}
+                width={30}
+                height={30}
+                rx={8}
+                fill="#FFFFFF"
+                stroke="#D2D7E0"
+                strokeWidth="1.5"
               />
-              <circle cx={x} cy={130} r="2" fill="#4EC9C0" opacity="0.55" />
+              <circle cx={x} cy={100} r="3.5" fill="#8A93A3" />
+              {/* Short codes only — full stage names ("Payment authorization")
+                  are wider than the space between adjacent nodes at any
+                  container width and will overlap their neighbours if used
+                  here. The full names are what the Test Console's step
+                  tracker shows, in HTML flow that wraps instead of colliding;
+                  this SVG preview is decorative, so it stays compact. */}
               <text
                 x={x}
-                y={166}
+                y={136}
                 textAnchor="middle"
-                className="fill-chalk-faint font-mono"
-                style={{ fontSize: 8, letterSpacing: "0.1em" }}
+                className="fill-ink-secondary font-mono"
+                style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}
               >
                 {stage.short}
               </text>

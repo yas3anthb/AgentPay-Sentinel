@@ -1,6 +1,6 @@
-# One image, three entrypoints (gateway, mock provider, dashboard). Keeping
-# them identical means the demo can't drift between what the gateway signs and
-# what the provider verifies.
+# One image, two entrypoints (gateway, mock provider). Keeping them identical
+# means the demo can't drift between what the gateway signs and what the
+# provider verifies.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -18,13 +18,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY gateway/ ./gateway/
 COPY mock_provider/ ./mock_provider/
-COPY dashboard/ ./dashboard/
 COPY scripts/ ./scripts/
 COPY policies/ ./policies/
 
 # The delegation keypair is generated on first boot if it isn't mounted in.
 RUN mkdir -p keys
 
-EXPOSE 8080 9100 8501
+EXPOSE 8080 9100
 
 CMD ["uvicorn", "gateway.main:app", "--host", "0.0.0.0", "--port", "8080"]

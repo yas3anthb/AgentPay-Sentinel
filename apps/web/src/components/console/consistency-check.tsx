@@ -1,7 +1,10 @@
 "use client";
 
+import { CheckCircle2, HelpCircle, ShieldAlert } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import type { PipelineState } from "@/lib/pipeline";
+import { cn } from "@/lib/utils";
 
 /**
  * Cross-checks the two independent claims the console makes about a blocked
@@ -66,6 +69,8 @@ export function ConsistencyCheck({
   );
 }
 
+const ICON = { allow: CheckCircle2, block: ShieldAlert, neutral: HelpCircle } as const;
+
 function Row({
   tone,
   label,
@@ -75,18 +80,19 @@ function Row({
   label: string;
   children: React.ReactNode;
 }) {
+  const Icon = ICON[tone];
   return (
     <div
-      className={
-        tone === "block"
-          ? "rounded border border-signal-block/60 bg-signal-block/[0.1] px-3 py-2.5"
-          : tone === "allow"
-            ? "rounded border border-hairline bg-ink/50 px-3 py-2.5"
-            : "rounded border border-hairline bg-ink/50 px-3 py-2.5"
-      }
+      className={cn(
+        "rounded-control border px-3.5 py-3",
+        tone === "block" ? "border-block-line bg-block-tint" : "border-line bg-surface-sunken",
+      )}
     >
-      <Badge tone={tone === "neutral" ? "neutral" : tone}>{label}</Badge>
-      <p className="mt-1.5 text-[11px] leading-relaxed text-chalk-muted">{children}</p>
+      <div className="flex items-center gap-2">
+        <Icon size={14} className={tone === "block" ? "text-block" : tone === "allow" ? "text-allow" : "text-ink-muted"} />
+        <Badge tone={tone}>{label}</Badge>
+      </div>
+      <p className="mt-1.5 text-caption text-ink-secondary">{children}</p>
     </div>
   );
 }

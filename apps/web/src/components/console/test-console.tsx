@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Fingerprint } from "lucide-react";
 
 import { ConsistencyCheck } from "@/components/console/consistency-check";
 import { DecisionCard, fromRaw, fromRun } from "@/components/console/decision-card";
 import { ScenarioForm } from "@/components/console/scenario-form";
 import { TranscriptPanel } from "@/components/console/transcript-panel";
-import { StageList2D } from "@/components/pipeline/stage-list-2d";
+import { StagesTable } from "@/components/pipeline/stages-table";
 import { PipelineStage } from "@/components/pipeline/pipeline-stage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { reducePipeline } from "@/lib/pipeline";
 import { approveRun, runRawIntent, runSimulation, type RawIntentForm } from "@/lib/run-scenario";
 import { SCENARIOS, useConsole } from "@/lib/store";
 import { usePrefersReducedMotion, useStageEvents } from "@/lib/use-stage-events";
+import { shortHash } from "@/lib/utils";
 
 const DEFAULT_RAW: RawIntentForm = {
   merchantId: "merch_beanery",
@@ -101,11 +103,11 @@ export function TestConsole() {
   const view = run ? fromRun(run) : rawDecision ? fromRaw(rawDecision) : null;
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[330px_minmax(0,1fr)_400px]">
+    <div className="grid gap-5 xl:grid-cols-[330px_minmax(0,1fr)_400px]">
       <Panel className="flex flex-col">
         <PanelHeader
           title="Scenario"
-          subtitle="Three run through the real CrewAI agent. The fourth bypasses it."
+          subtitle="Pick what the agent should try to do."
         />
         <ScenarioForm
           scenario={scenario}
@@ -116,14 +118,14 @@ export function TestConsole() {
           onRaw={setRawForm}
           disabled={busy}
         />
-        <div className="mt-auto border-t border-hairline p-3">
-          <Button onClick={start} disabled={busy} className="w-full" size="lg">
-            {busy ? "running…" : "Run scenario"}
+        <div className="mt-auto border-t border-line p-4">
+          <Button onClick={start} disabled={busy} variant="primary" className="w-full" size="lg">
+            {busy ? "Running…" : "Run scenario"}
           </Button>
-          <p className="mt-2 text-center font-mono text-[10px] text-chalk-faint">
-            relay socket: {socketState}
+          <p className="mt-2 text-center text-label text-ink-muted">
+            Live updates: {socketState === "open" ? "connected" : socketState}
           </p>
-          {/* Screen readers get the outcome announced; the 3D scene is decorative to them. */}
+          {/* Screen readers get the outcome announced; the visualisation is decorative to them. */}
           <p aria-live="polite" className="sr-only">
             {phase === "running"
               ? "Running scenario."
@@ -138,41 +140,39 @@ export function TestConsole() {
         </div>
       </Panel>
 
-      <div className="flex flex-col gap-4">
-        <Panel className="min-h-[420px]">
+      <div className="flex flex-col gap-5">
+        <Panel className="overflow-hidden">
           <PanelHeader
             title="Enforcement pipeline"
-            subtitle="Driven by live stage events from the gateway — the timing you see is the timing that happened."
+            subtitle="Reflects real timing from the gateway as it happens."
             actions={
-              phase === "paused" ? <Badge tone="approval">paused — awaiting approval</Badge> : null
+              phase === "paused" ? <Badge tone="approval">Paused — awaiting approval</Badge> : null
             }
           />
           <PipelineStage state={pipeline} reducedMotion={reducedMotion} phase={phase} />
         </Panel>
 
         <Panel>
-          <PanelHeader title="Stages" subtitle="The same data, as a list." />
-          <div className="p-3">
-            <StageList2D state={pipeline} reducedMotion={reducedMotion} />
-          </div>
+          <PanelHeader title="Stage detail" subtitle="What each step checked, and how long it took." />
+          <StagesTable state={pipeline} />
         </Panel>
       </div>
 
-      <div className="flex min-h-0 flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-5">
         <Panel className="flex min-h-[300px] flex-col">
           <PanelHeader
-            title="Agent transcript"
+            title="Agent activity"
             subtitle={
               run
-                ? `${run.transcript.steps.length} steps · ${run.scenario}`
-                : "Run a scenario to see the agent's tool calls and reasoning steps."
+                ? `${run.transcript.steps.length} steps recorded`
+                : "Run a scenario to see the agent's actions."
             }
           />
           {error ? <ErrorPanel error={error} /> : null}
           {run ? (
             <TranscriptPanel run={run} reducedMotion={reducedMotion} />
           ) : !error ? (
-            <p className="p-4 text-[11px] text-chalk-faint">no run yet</p>
+            <p className="p-4 text-caption text-ink-muted">No run yet.</p>
           ) : null}
         </Panel>
 
@@ -181,15 +181,15 @@ export function TestConsole() {
         {phase === "paused" && run ? (
           <Panel>
             <PanelHeader
-              title="Human approval required"
-              subtitle="The graph is stopped on an interrupt. Nothing is polling; it resumes only when you act."
+              title="Waiting for your approval"
+              subtitle="The agent has stopped and is not retrying or polling. Nothing proceeds until you decide."
             />
             <div className="flex gap-2 p-4">
               <Button variant="approve" onClick={approve} className="flex-1">
                 Approve
               </Button>
               <Button
-                variant="danger"
+                variant="destructive"
                 className="flex-1"
                 onClick={() => useConsole.getState().reset()}
               >
@@ -207,7 +207,7 @@ export function TestConsole() {
               providerDelta={run?.provider_calls.delta ?? null}
               isAdversarial={scenario === "adversarial"}
             />
-            <div className="px-4 pb-4">
+            <div className="px-5 pb-5">
               <ConsistencyCheck
                 state={pipeline}
                 providerDelta={run?.provider_calls.delta}
@@ -223,20 +223,17 @@ export function TestConsole() {
 
 function ErrorPanel({ error }: { error: SimulatorError }) {
   return (
-    <div className="m-3 rounded border border-signal-block/50 bg-signal-block/[0.07] p-3">
-      <div className="flex items-center gap-2">
-        <Badge tone="block">{error.error}</Badge>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-chalk-faint">
-          run failed
-        </span>
+    <div className="m-4 flex items-start gap-2.5 rounded-panel border border-block-line bg-block-tint p-3.5">
+      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-block" />
+      <div className="min-w-0">
+        <p className="text-caption font-medium text-block">Run failed — {error.error}</p>
+        <p className="mt-1 whitespace-pre-wrap break-words text-caption text-ink-secondary">
+          {error.message}
+        </p>
+        <p className="mt-1.5 text-label text-ink-muted">
+          No transcript is shown because no run happened.
+        </p>
       </div>
-      <p className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-chalk-muted">
-        {error.message}
-      </p>
-      <p className="mt-2 text-[10px] leading-relaxed text-chalk-faint">
-        No transcript is shown because no run happened. The simulator returns an error rather
-        than a plausible-looking sequence of steps.
-      </p>
     </div>
   );
 }
@@ -246,28 +243,31 @@ function InjectionProof({
 }: {
   injection: { payload_sha256: string; payload_chars: number; reached_agent_unmodified: boolean };
 }) {
+  const known = injection.reached_agent_unmodified;
   return (
     <Panel>
       <PanelHeader
         title="Injection integrity"
-        subtitle="Whether the attack reached the agent intact. A block only proves something if nothing upstream sanitised it first."
+        subtitle="Confirms the attack reached the agent unchanged before Sentinel blocked it."
       />
-      <div className="flex flex-col gap-2 p-4">
-        <div className="flex items-center gap-2">
-          <Badge tone={injection.reached_agent_unmodified ? "block" : "neutral"}>
-            {injection.reached_agent_unmodified ? "reached agent unmodified" : "payload altered"}
-          </Badge>
-          <span className="font-mono text-[10px] text-chalk-faint">
-            {injection.payload_chars} chars
-          </span>
+      <div className={known ? "flex gap-3 p-5" : "flex gap-3 border-t border-line p-5"}>
+        <Fingerprint size={18} className={known ? "mt-0.5 shrink-0 text-block" : "mt-0.5 shrink-0 text-ink-muted"} />
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Badge tone={known ? "block" : "neutral"}>
+              {known ? "Reached agent unmodified" : "Content altered before reaching agent"}
+            </Badge>
+            <span className="text-label text-ink-muted">{injection.payload_chars} characters</span>
+          </div>
+          <p className="mt-1.5 text-label text-ink-muted">Content hash (SHA-256)</p>
+          <code className="block break-all font-mono text-data text-ink-secondary">
+            {shortHash(injection.payload_sha256, 64)}
+          </code>
+          <p className="mt-1.5 text-caption text-ink-secondary">
+            Neither the agent framework filtered this content. The block happened at the
+            gateway, on the unmodified attack.
+          </p>
         </div>
-        <code className="break-all font-mono text-[10px] leading-relaxed text-chalk-muted">
-          {injection.payload_sha256}
-        </code>
-        <p className="text-[10px] leading-relaxed text-chalk-faint">
-          Neither CrewAI nor LangChain filtered the payload. The hash above matches the bytes
-          recorded at the tool boundary, so the block happened at the gateway.
-        </p>
       </div>
     </Panel>
   );

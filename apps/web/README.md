@@ -141,5 +141,5 @@ properly, but that package was out of scope for this change.
 - **Rego highlighting is hand-rolled** (`src/lib/rego-highlight.tsx`) — a small
   tokenizer for keywords, strings, comments, numbers and builtins, rather than
   a highlighting library.
-- **The Streamlit dashboard still exists** at `:8501`. This app replaces it as
-  the primary surface; it was left running rather than deleted.
+- There is no other UI. The Streamlit dashboard that used to run at `:8501`
+  has been removed entirely — this app is the only frontend.

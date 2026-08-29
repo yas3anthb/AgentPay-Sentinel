@@ -42,19 +42,18 @@ decision is never an implicit yes.
 
 ```bash
 cp .env.example .env         # add OPENAI_API_KEY, or see "Running without a key" below
-make up                      # gateway + OPA + Redis + Postgres + mock provider + dashboard
+make up                      # web + gateway + OPA + Redis + Postgres + mock provider + agent
 make demo                    # runs both demos
 ```
 
 | Service | URL |
 |---|---|
-| **Web app** | **http://localhost:3000** — start here |
+| **Web app** | **http://localhost:3000** — the only UI |
 | Gateway (Swagger) | http://localhost:8080/docs |
 | Agent simulator | http://localhost:9200/docs |
 | Event relay | http://localhost:9300/readyz |
 | Mock provider | http://localhost:9100/healthz |
 | OPA | http://localhost:8181 |
-| Streamlit dashboard | http://localhost:8501 (legacy) |
 
 ## The frontend
 
@@ -403,11 +402,10 @@ gateway/
 policies/          thresholds · injection · spending · merchant · agent_scope
                    · approvals · duplicates · decision (the PDP) + tests
 mock_provider/     configurable success/decline/error/timeout + call counter
-dashboard/         Streamlit: request → signals → decision → reasons → audit
 scripts/           gen_keys.py · demo_clean.py · demo_injection.py
 apps/
   agent-simulator/ CrewAI + LangChain + LangGraph shopping agent whose only
                    money-moving tool is this gateway
   event-relay/     read-only WebSocket fan-out for pipeline stage events
-  web/             Next.js product frontend — the primary demo surface
+  web/             Next.js product frontend — the only UI
 ```

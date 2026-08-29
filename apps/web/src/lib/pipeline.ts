@@ -22,18 +22,63 @@ export interface StageDef {
   id: StageId;
   label: string;
   short: string;
-  blurb: string;
+  /** Plain language, for the first read. Leads everywhere. */
+  plain: string;
+  /** The precise technical description. Available on demand, never dumped. */
+  technical: string;
 }
 
 /** Order matters: it is the order the gateway actually runs them in. */
 export const STAGES: StageDef[] = [
-  { id: "identity", label: "Identity", short: "IDN", blurb: "Delegation JWT, agent scope, revocation set" },
-  { id: "canonical", label: "Canonical Builder", short: "CAN", blurb: "Typed intent; free text quarantined as untrusted" },
-  { id: "analyzer", label: "Intent Analyzer", short: "ANL", blurb: "Regex rules + LLM classifier + source trust" },
-  { id: "risk", label: "Risk Engine", short: "RSK", blurb: "Signals only — emits no decision" },
-  { id: "pdp", label: "OPA (PDP)", short: "PDP", blurb: "The only component that decides" },
-  { id: "authorization", label: "Payment Authorization", short: "PAY", blurb: "Scoped single-use token, state machine" },
-  { id: "audit", label: "Audit Ledger", short: "AUD", blurb: "Hash-chained; records every decision" },
+  {
+    id: "identity",
+    label: "Identity",
+    short: "IDN",
+    plain: "Confirms this agent is who it claims to be",
+    technical: "Delegation JWT signature, agent scope, revocation set lookup",
+  },
+  {
+    id: "canonical",
+    label: "Request check",
+    short: "CAN",
+    plain: "Turns the request into a strict, typed payment record",
+    technical: "Canonical transaction builder; free text quarantined as untrusted content",
+  },
+  {
+    id: "analyzer",
+    label: "Content analysis",
+    short: "ANL",
+    plain: "Scans the merchant's text for attempts to manipulate the agent",
+    technical: "Regex rule layer + LLM injection classifier + source trust scoring",
+  },
+  {
+    id: "risk",
+    label: "Risk scoring",
+    short: "RSK",
+    plain: "Scores the transaction against spending limits and history",
+    technical: "Risk engine — emits weighted signals only, never a decision",
+  },
+  {
+    id: "pdp",
+    label: "Policy decision",
+    short: "PDP",
+    plain: "Applies the written policy and decides",
+    technical: "Open Policy Agent — the only component that returns a verdict",
+  },
+  {
+    id: "authorization",
+    label: "Payment authorization",
+    short: "PAY",
+    plain: "Issues a one-time token and charges the provider",
+    technical: "Scoped single-use token issuance and the payment state machine",
+  },
+  {
+    id: "audit",
+    label: "Audit record",
+    short: "AUD",
+    plain: "Writes a tamper-evident record of the outcome",
+    technical: "SHA-256 hash-chained ledger; records every decision, not just blocks",
+  },
 ];
 
 export const STAGE_INDEX: Record<StageId, number> = Object.fromEntries(
@@ -109,20 +154,62 @@ export function isSkipped(state: PipelineState, id: StageId): boolean {
   return state[id].status === "skipped";
 }
 
+/** Hex values, for the canvas/SVG renderers. Mirrors the Tailwind tokens. */
 export function statusColor(status: StageStatus): string {
   switch (status) {
     case "passed":
-      return "#3FBF7F";
+      return "#0F7A4E";
     case "blocked":
     case "failed":
-      return "#F2637A";
+      return "#C2334A";
     case "paused":
-      return "#E0A340";
+      return "#9A5B00";
     case "started":
-      return "#4EC9C0";
+      return "#4F46E5";
     case "skipped":
-      return "#2A3644";
+      return "#CBD5E1";
     default:
-      return "#1F2A36";
+      return "#94A3B8";
+  }
+}
+
+export type StageTone = "allow" | "approval" | "block" | "accent" | "inactive" | "neutral";
+
+/** The one mapping from stage status to the product's pill tones. */
+export function statusTone(status: StageStatus): StageTone {
+  switch (status) {
+    case "passed":
+      return "allow";
+    case "blocked":
+    case "failed":
+      return "block";
+    case "paused":
+      return "approval";
+    case "started":
+      return "accent";
+    case "skipped":
+      return "inactive";
+    default:
+      return "neutral";
+  }
+}
+
+/** Result wording for the stages table. Plain, not jargon. */
+export function statusLabel(status: StageStatus): string {
+  switch (status) {
+    case "passed":
+      return "Passed";
+    case "blocked":
+      return "Blocked";
+    case "failed":
+      return "Failed";
+    case "paused":
+      return "Paused";
+    case "started":
+      return "Running";
+    case "skipped":
+      return "Not reached";
+    default:
+      return "Waiting";
   }
 }

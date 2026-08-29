@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ShieldAlert, ShieldCheck } from "lucide-react";
 
-import { Badge, decisionTone } from "@/components/ui/badge";
+import { Badge, DecisionPill } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Panel, PanelHeader } from "@/components/ui/panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfigurationTab } from "@/components/agents/configuration-tab";
 import {
   DEMO,
   fetchPolicy,
@@ -69,7 +72,7 @@ export function AgentsView() {
     setRevokedAt(Date.now());
     try {
       await revokeDelegation(DEMO.delegationId);
-      setNotice("Revocation written. Watching for it to appear in the shared set…");
+      setNotice("Revocation written. Watching for it to take effect…");
     } catch (error) {
       setNotice(String(error));
       setRevokedAt(null);
@@ -106,42 +109,50 @@ export function AgentsView() {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-      <div className="flex flex-col gap-4">
+    <Tabs defaultValue="overview" className="flex flex-col gap-5">
+      <TabsList>
+        <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="configuration">Configuration</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="overview">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          <div className="flex flex-col gap-5">
         <Panel>
           <PanelHeader
-            title="Registered agents"
-            subtitle="Delegated authority, as the control plane holds it."
-            actions={<Badge tone={isRevoked ? "block" : "allow"}>{isRevoked ? "revoked" : "active"}</Badge>}
+            title="Registered agent"
+            subtitle="Delegated authority, as the system holds it."
+            actions={
+              <Badge tone={isRevoked ? "block" : "allow"}>
+                {isRevoked ? "Revoked" : "Active"}
+              </Badge>
+            }
           />
-          <div className="grid grid-cols-2 gap-3 p-4">
-            <Field label="agent" value={DEMO.agentId} />
-            <Field label="owner" value={DEMO.userId} />
-            <Field label="delegation" value={DEMO.delegationId} />
-            <Field label="scopes" value="payments:authorize" />
+          <div className="grid grid-cols-2 gap-4 p-5">
+            <Field label="Agent" value={DEMO.agentId} mono />
+            <Field label="Owner" value={DEMO.userId} mono />
+            <Field label="Delegation" value={DEMO.delegationId} mono />
+            <Field label="Scopes" value="payments:authorize" mono />
             <Field
-              label="per transaction"
+              label="Per transaction"
               value={policy ? `${policy.per_transaction_limit} ${policy.currency}` : "—"}
             />
+            <Field label="Daily" value={policy ? `${policy.daily_limit} ${policy.currency}` : "—"} />
             <Field
-              label="daily"
-              value={policy ? `${policy.daily_limit} ${policy.currency}` : "—"}
-            />
-            <Field
-              label="approval over"
+              label="Approval over"
               value={policy ? `${policy.approval_threshold} ${policy.currency}` : "—"}
             />
-            <Field label="policy" value={policy?.policy_version ?? "—"} />
+            <Field label="Policy" value={policy?.policy_version ?? "—"} mono />
             <Field
-              label="last transaction"
+              label="Last transaction"
               value={
                 agentTransactions[0]
                   ? new Date(agentTransactions[0].created_at).toLocaleTimeString()
-                  : "none yet"
+                  : "None yet"
               }
             />
             <Field
-              label="per hour cap"
+              label="Per-hour cap"
               value={policy ? String(policy.max_transactions_per_hour) : "—"}
             />
           </div>
@@ -149,8 +160,8 @@ export function AgentsView() {
 
         <Panel>
           <PanelHeader title="Delegation chain" subtitle="Who authorised what." />
-          <div className="flex flex-wrap items-center gap-2 p-4 font-mono text-[11px]">
-            <Chain label={DEMO.userId} tone="idle" />
+          <div className="flex flex-wrap items-center gap-2 p-5">
+            <Chain label={DEMO.userId} tone="neutral" />
             <Arrow />
             <Chain label={DEMO.delegationId} tone={isRevoked ? "block" : "neutral"} />
             <Arrow />
@@ -163,60 +174,58 @@ export function AgentsView() {
         <Panel>
           <PanelHeader
             title="Revocation"
-            subtitle="The JWT stays cryptographically valid until it expires. The gateway rejects it anyway, once the revocation lands in the shared set."
+            subtitle="The delegation stays cryptographically valid until it expires. Revoking it takes effect once the change propagates — this is near-real-time, not instant."
           />
-          <div className="flex flex-col gap-3 p-4">
+          <div className="flex flex-col gap-3.5 p-5">
             <div className="flex gap-2">
-              <Button variant="danger" onClick={doRevoke} disabled={busy || isRevoked}>
+              <Button variant="destructive" onClick={doRevoke} disabled={busy || isRevoked}>
                 Revoke delegation
               </Button>
-              <Button variant="outline" onClick={doReinstate} disabled={busy || !isRevoked}>
+              <Button variant="secondary" onClick={doReinstate} disabled={busy || !isRevoked}>
                 Reinstate
               </Button>
             </div>
 
             {revokedAt !== null ? (
-              <div className="rounded border border-hairline bg-ink/60 px-3 py-2.5">
-                <div className="label-xs">observed propagation</div>
-                <div className="mt-1 font-mono text-lg tabular-nums text-chalk">
+              <div className="rounded-control border border-line bg-surface-sunken px-3.5 py-3">
+                <div className="label">Observed propagation time</div>
+                <div className="mt-1 font-mono text-section tabular-nums text-ink">
                   {observedAfterMs === null ? (
-                    <span className="text-signal-approval">waiting…</span>
+                    <span className="animate-pulse-soft text-ink-muted">Waiting…</span>
                   ) : (
                     <>
                       {observedAfterMs}
-                      <span className="text-sm text-chalk-faint">ms</span>
+                      <span className="text-caption text-ink-muted">ms</span>
                     </>
                   )}
                 </div>
-                <p className="mt-1.5 text-[11px] leading-relaxed text-chalk-muted">
+                <p className="mt-1.5 text-caption text-ink-secondary">
                   Measured from the revoke call to this page seeing it, polling every{" "}
-                  {POLL_MS}ms. Near-real-time, not instant — the number above includes the
-                  polling interval, and is shown rather than hidden behind an optimistic badge.
+                  {POLL_MS}ms. The number above includes that polling interval rather than an
+                  optimistic instant flip.
                 </p>
               </div>
             ) : null}
 
-            {notice ? (
-              <p className="text-[11px] leading-relaxed text-chalk-muted">{notice}</p>
-            ) : null}
+            {notice ? <p className="text-caption text-ink-secondary">{notice}</p> : null}
           </div>
         </Panel>
 
-        <Panel className="border-signal-approval/30">
+        <Panel className="border-approval-line">
           <PanelHeader
             title="Reset demo state"
-            subtitle="Dev-only. Clears transactions, the audit chain, and the replay caches — including the duplicate fingerprints and rolling daily budget a demo in progress may depend on."
-            actions={<Badge tone="approval">destructive</Badge>}
+            subtitle="Dev-only. Clears every transaction and the audit chain — including the duplicate-purchase check and daily budget a demo in progress may depend on."
+            actions={<Badge tone="approval">Destructive</Badge>}
           />
-          <div className="p-4">
+          <div className="p-5">
             {confirmReset ? (
-              <div className="flex flex-col gap-2">
-                <p className="text-[11px] leading-relaxed text-chalk-muted">
+              <div className="flex flex-col gap-3">
+                <p className="text-caption text-ink-secondary">
                   This clears the audit chain and every transaction. If someone is mid-demo,
-                  their fingerprint and budget state goes with it. Continue?
+                  their duplicate-purchase and budget state goes with it. Continue?
                 </p>
                 <div className="flex gap-2">
-                  <Button variant="danger" onClick={doReset} disabled={busy}>
+                  <Button variant="destructive" onClick={doReset} disabled={busy}>
                     Yes, clear it
                   </Button>
                   <Button variant="ghost" onClick={() => setConfirmReset(false)}>
@@ -225,7 +234,7 @@ export function AgentsView() {
                 </div>
               </div>
             ) : (
-              <Button variant="outline" onClick={() => setConfirmReset(true)}>
+              <Button variant="secondary" onClick={() => setConfirmReset(true)}>
                 Reset demo state…
               </Button>
             )}
@@ -240,10 +249,10 @@ export function AgentsView() {
         />
         <div className="max-h-[76vh] overflow-y-auto">
           <table className="w-full border-collapse text-left">
-            <thead className="sticky top-0 bg-ink-raised">
-              <tr className="border-b border-hairline">
-                {["time", "merchant", "amount", "decision", "state", "reasons"].map((h) => (
-                  <th key={h} className="label-xs px-3 py-2 font-normal">
+            <thead className="sticky top-0 bg-surface">
+              <tr className="border-b border-line">
+                {["Time", "Merchant", "Amount", "Decision", "State", "Reasons"].map((h) => (
+                  <th key={h} className="label px-4 py-2.5 font-medium">
                     {h}
                   </th>
                 ))}
@@ -251,26 +260,26 @@ export function AgentsView() {
             </thead>
             <tbody>
               {agentTransactions.map((row) => (
-                <tr key={row.payment_authorization_id} className="border-b border-hairline/60">
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-[10px] text-chalk-faint">
+                <tr key={row.payment_authorization_id} className="border-b border-line">
+                  <td className="whitespace-nowrap px-4 py-2.5 font-mono text-data text-ink-muted">
                     {new Date(row.created_at).toLocaleTimeString()}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-chalk">{row.merchant_id}</td>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] tabular-nums text-chalk">
+                  <td className="px-4 py-2.5 text-caption text-ink">{row.merchant_id}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 font-mono text-data tabular-nums text-ink">
                     {row.amount} {row.currency}
                   </td>
-                  <td className="px-3 py-2">
-                    <Badge tone={decisionTone(row.decision)}>{row.decision}</Badge>
+                  <td className="px-4 py-2.5">
+                    <DecisionPill decision={row.decision} />
                   </td>
-                  <td className="px-3 py-2 font-mono text-[10px] text-chalk-muted">{row.state}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-1">
+                  <td className="px-4 py-2.5 text-caption text-ink-secondary">{row.state}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex flex-wrap gap-1.5">
                       {row.reason_codes.slice(0, 3).map((code) => (
                         <span
                           key={code}
                           className={cn(
-                            "font-mono text-[9px]",
-                            row.decision === "BLOCK" ? "text-signal-block" : "text-chalk-faint",
+                            "font-mono text-label normal-case tracking-normal",
+                            row.decision === "BLOCK" ? "text-block" : "text-ink-muted",
                           )}
                         >
                           {code}
@@ -282,23 +291,41 @@ export function AgentsView() {
               ))}
               {agentTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-[11px] text-chalk-faint">
-                    no transactions yet
+                  <td colSpan={6} className="px-4 py-8 text-center text-caption text-ink-muted">
+                    No transactions yet
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
+            </div>
+          </Panel>
         </div>
-      </Panel>
-    </div>
+      </TabsContent>
+
+      <TabsContent value="configuration">
+        <ConfigurationTab />
+      </TabsContent>
+    </Tabs>
   );
 }
 
-function Chain({ label, tone }: { label: string; tone: "idle" | "neutral" | "allow" | "block" }) {
-  return <Badge tone={tone}>{label}</Badge>;
+function Chain({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "neutral" | "allow" | "block";
+}) {
+  const Icon = tone === "block" ? ShieldAlert : ShieldCheck;
+  return (
+    <Badge tone={tone} className="font-mono normal-case tracking-normal">
+      <Icon size={11} />
+      {label}
+    </Badge>
+  );
 }
 
 function Arrow() {
-  return <span className="text-chalk-faint">→</span>;
+  return <span className="text-ink-muted">→</span>;
 }

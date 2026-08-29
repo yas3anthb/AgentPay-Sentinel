@@ -22,6 +22,8 @@ export interface DelegationPolicy {
   approval_threshold: string;
   max_transactions_per_hour: number;
   require_verified_merchant: boolean;
+  allowed_merchants: string[];
+  blocked_merchants: string[];
   revoked: boolean;
 }
 
@@ -61,6 +63,8 @@ export async function fetchPolicy(delegationId: string): Promise<DelegationPolic
     approval_threshold: String(raw.approval_threshold ?? "0"),
     max_transactions_per_hour: Number(raw.max_transactions_per_hour ?? 0),
     require_verified_merchant: raw.require_verified_merchant === true,
+    allowed_merchants: Array.isArray(raw.allowed_merchants) ? raw.allowed_merchants.map(String) : [],
+    blocked_merchants: Array.isArray(raw.blocked_merchants) ? raw.blocked_merchants.map(String) : [],
     revoked: raw.revoked === true,
   };
 }

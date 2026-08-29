@@ -4,50 +4,45 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
-  html,
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
-    @apply bg-ink text-chalk antialiased;
+    @apply bg-canvas text-ink;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  /* Hairline grid: reads as instrumentation, not decoration. */
-  body {
-    background-image:
-      linear-gradient(to right, rgb(23 33 44 / 0.35) 1px, transparent 1px),
-      linear-gradient(to bottom, rgb(23 33 44 / 0.35) 1px, transparent 1px);
-    background-size: 48px 48px;
-    background-attachment: fixed;
-  }
-
-  ::selection {
-    @apply bg-signal-idle/25 text-chalk;
+  /* Tabular figures wherever numbers are compared down a column. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 
   :focus-visible {
-    @apply outline-none ring-2 ring-signal-idle/70 ring-offset-2 ring-offset-ink;
+    @apply outline-none ring-2 ring-accent/45 ring-offset-2 ring-offset-canvas;
   }
 }
 
 @layer components {
-  .panel {
-    @apply rounded-lg border border-hairline bg-ink-raised/80 shadow-panel backdrop-blur-sm;
+  .card {
+    @apply rounded-panel border border-line bg-surface shadow-card;
   }
 
-  .label-xs {
-    @apply font-mono text-[10px] uppercase tracking-[0.14em] text-chalk-faint;
-  }
-
-  .hairline-t {
-    @apply border-t border-hairline;
+  /* The micro-label used above every value in the product. */
+  .label {
+    @apply text-label uppercase text-ink-muted;
   }
 }
 
 /*
- * Respect the user's motion preference everywhere, including the 3D scene's
- * idle rotation and the beam animation. The information is identical either
- * way — only the movement stops.
+ * Motion preference is respected globally, including the 3D scene's idle
+ * drift and the tracker's fill transitions. The information is identical
+ * either way; only the movement stops.
  */
 @media (prefers-reduced-motion: reduce) {
   *,

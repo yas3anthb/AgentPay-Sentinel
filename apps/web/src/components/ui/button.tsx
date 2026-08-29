@@ -7,28 +7,27 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-mono text-xs uppercase tracking-wider transition-colors disabled:pointer-events-none disabled:opacity-40",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
   {
     variants: {
       variant: {
-        default:
-          "border border-signal-idle/40 bg-signal-idle/10 text-signal-idle hover:bg-signal-idle/20",
-        outline:
-          "border border-hairline-bright bg-transparent text-chalk-muted hover:border-chalk-faint hover:text-chalk",
-        ghost: "text-chalk-muted hover:bg-hairline/60 hover:text-chalk",
-        danger:
-          "border border-signal-block/40 bg-signal-block/10 text-signal-block hover:bg-signal-block/20",
-        approve:
-          "border border-signal-allow/40 bg-signal-allow/10 text-signal-allow hover:bg-signal-allow/20",
+        primary: "bg-accent text-white hover:bg-accent-hover",
+        secondary:
+          "border border-line-strong bg-surface text-ink hover:border-ink-muted hover:bg-surface-sunken",
+        ghost: "text-ink-secondary hover:bg-surface-sunken hover:text-ink",
+        // Verdict colours are reserved, so a destructive control borrows the
+        // block colour only when the action itself revokes or denies.
+        destructive: "border border-block-line bg-block-tint text-block hover:bg-block/10",
+        approve: "border border-allow-line bg-allow-tint text-allow hover:bg-allow/10",
       },
       size: {
-        default: "h-9 px-4",
-        sm: "h-7 px-3 text-[10px]",
-        lg: "h-11 px-6 text-sm",
+        sm: "h-8 px-3 text-caption",
+        md: "h-9 px-4 text-body",
+        lg: "h-10 px-5 text-body",
         icon: "h-9 w-9",
       },
     },
-    defaultVariants: { variant: "default", size: "default" },
+    defaultVariants: { variant: "secondary", size: "md" },
   },
 );
 

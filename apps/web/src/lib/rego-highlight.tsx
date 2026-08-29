@@ -34,14 +34,17 @@ const PATTERN = new RegExp(
   "g",
 );
 
+// Syntax colours here are deliberately NOT the product's reserved status hues
+// (allow/approval/block) — this is a code viewer, not a decision surface, and
+// reusing those three would blur the one rule the rest of the UI depends on.
 const CLASS: Record<string, string> = {
-  comment: "text-chalk-faint italic",
-  string: "text-signal-allow",
-  number: "text-signal-approval",
-  keyword: "text-signal-idle",
-  builtin: "text-signal-simulated",
-  punct: "text-chalk-faint",
-  plain: "text-chalk",
+  comment: "text-ink-muted italic",
+  string: "text-[#0B7285]",
+  number: "text-[#9333EA]",
+  keyword: "text-accent",
+  builtin: "text-[#2563EB]",
+  punct: "text-ink-muted",
+  plain: "text-ink",
 };
 
 function tokenize(source: string): Token[] {
@@ -79,7 +82,7 @@ export function RegoBlock({ source }: { source: string }) {
       <code>
         {lines.map((line, index) => (
           <Fragment key={index}>
-            <span className="mr-3 inline-block w-7 select-none text-right text-chalk-faint/60">
+            <span className="mr-3 inline-block w-7 select-none text-right text-ink-muted/60">
               {index + 1}
             </span>
             {highlightRego(line)}

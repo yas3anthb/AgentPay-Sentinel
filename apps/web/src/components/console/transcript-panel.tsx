@@ -1,22 +1,42 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef } from "react";
+import {
+  AlertTriangle,
+  Bot,
+  ClipboardCheck,
+  Fingerprint,
+  Info,
+  ScrollText,
+  Wrench,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge, DecisionPill, OriginPill } from "@/components/ui/badge";
 import type { RunSummary, TranscriptStep } from "@/lib/api/transcript";
 import { cn, formatMs, shortHash } from "@/lib/utils";
 
-const KIND_LABEL: Record<string, string> = {
-  graph_transition: "graph",
-  agent_step: "agent",
-  tool_call: "tool →",
-  tool_result: "tool ←",
-  gateway_decision: "sentinel",
-  review: "review",
-  error: "error",
-  note: "note",
+const KIND_META: Record<string, { label: string; icon: typeof Bot }> = {
+  graph_transition: { label: "Workflow step", icon: ScrollText },
+  agent_step: { label: "Agent reasoning", icon: Bot },
+  tool_call: { label: "Tool call", icon: Wrench },
+  tool_result: { label: "Tool result", icon: Wrench },
+  gateway_decision: { label: "Sentinel decision", icon: ClipboardCheck },
+  review: { label: "Review", icon: ClipboardCheck },
+  error: { label: "Error", icon: AlertTriangle },
+  note: { label: "Note", icon: Info },
 };
+
+function metaFor(kind: string) {
+  return KIND_META[kind] ?? { label: kind, icon: Info };
+}
+
+/** First letter capitalised, nothing else changed — the API already writes
+ * plain sentence fragments; this just makes them read as sentences. */
+function sentenceCase(text: string): string {
+  if (!text) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 export function TranscriptPanel({
   run,
@@ -32,9 +52,9 @@ export function TranscriptPanel({
 
   return (
     <div className="flex min-h-0 flex-col">
-      {run.simulated_reasoning ? <OfflineBanner warning={run.warning} /> : null}
+      {run.simulated_reasoning ? <SandboxBanner warning={run.warning} /> : null}
 
-      <ol className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-3">
+      <ol className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-4">
         <AnimatePresence initial={false}>
           {run.transcript.steps.map((step) => (
             <motion.li
@@ -43,7 +63,7 @@ export function TranscriptPanel({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.18 }}
             >
-              <StepRow step={step} />
+              <StepCard step={step} />
             </motion.li>
           ))}
         </AnimatePresence>
@@ -53,121 +73,138 @@ export function TranscriptPanel({
   );
 }
 
-function OfflineBanner({ warning }: { warning?: string }) {
+/** A calm "sandbox mode" notice — not a terminal warning block, and never
+ * amber, since amber is reserved for REQUIRE_APPROVAL. */
+function SandboxBanner({ warning }: { warning?: string }) {
   return (
-    <div className="border-b border-signal-approval/30 bg-signal-approval/[0.08] px-4 py-3">
-      <div className="flex items-center gap-2">
-        <Badge tone="approval">Offline / scripted reasoning</Badge>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-signal-allow">
-          Sentinel decisions are live
-        </span>
+    <div className="flex items-start gap-2.5 border-b border-notice-line bg-notice-tint px-4 py-3">
+      <Info size={16} className="mt-0.5 shrink-0 text-notice" />
+      <div>
+        <p className="text-caption font-medium text-notice">
+          Sandbox mode — agent reasoning is scripted
+        </p>
+        <p className="mt-0.5 text-caption text-ink-secondary">
+          {warning ??
+            "The agent's reasoning steps below follow a fixed script rather than a language model. Every scripted step is marked. The Sentinel decisions, reason codes and audit hashes are real."}
+        </p>
       </div>
-      <p className="mt-2 text-[11px] leading-relaxed text-chalk-muted">
-        {warning ??
-          "The agent's reasoning is a deterministic script, not a language model. Every scripted step is marked below. The gateway decisions, reason codes and audit hashes are real."}
-      </p>
     </div>
   );
 }
 
-function StepRow({ step }: { step: TranscriptStep }) {
+function StepCard({ step }: { step: TranscriptStep }) {
+  const [open, setOpen] = useState(false);
+  const { label, icon: Icon } = metaFor(step.kind);
   const isGateway = step.kind === "gateway_decision";
   const isError = step.kind === "error";
+  const evidence = injectionEvidence(step);
+  const reasonCodes = isGateway ? asStringArray(step.detail.reason_codes) : [];
+  const detailEntries = Object.entries(step.detail).filter(
+    ([key]) => !["content", "content_sha256", "is_known_injection_payload", "reason_codes"].includes(key),
+  );
 
   return (
     <div
       className={cn(
-        "rounded-md border px-3 py-2",
-        // The distinction the spec insists on: a scripted step never looks the
-        // same as a live one. Violet left border + badge, everywhere, always.
-        step.simulated
-          ? "border-l-2 border-l-signal-simulated/70 border-hairline bg-signal-simulated/[0.04]"
-          : "border-hairline-bright bg-ink-raised",
-        isGateway && "border-signal-idle/40 bg-signal-idle/[0.05]",
-        isError && "border-signal-block/50 bg-signal-block/[0.06]",
+        "rounded-panel border px-4 py-3",
+        isGateway
+          ? "border-accent/25 bg-accent-tint/40"
+          : isError
+            ? "border-block-line bg-block-tint/40"
+            : "border-line bg-surface",
       )}
     >
-      <div className="flex items-baseline gap-2">
-        <span className="shrink-0 font-mono text-[9px] tabular-nums text-chalk-faint">
-          {String(step.index).padStart(2, "0")}
-        </span>
-        <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-chalk-faint">
-          {KIND_LABEL[step.kind] ?? step.kind}
-        </span>
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate font-mono text-[11px]",
-            isGateway ? "text-signal-idle" : "text-chalk",
-          )}
-        >
-          {step.name}
-        </span>
-        {step.latency_ms !== null ? (
-          <span className="shrink-0 font-mono text-[9px] tabular-nums text-chalk-faint">
-            {formatMs(step.latency_ms)}
-          </span>
-        ) : null}
-        {step.simulated ? (
-          <Badge tone="simulated" className="shrink-0">
-            scripted
-          </Badge>
-        ) : (
-          <Badge tone="idle" className="shrink-0">
-            live
-          </Badge>
-        )}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <Icon size={16} className="mt-0.5 shrink-0 text-ink-muted" aria-hidden />
+          <div className="min-w-0">
+            <p className={cn("text-body", isGateway ? "font-medium text-ink" : "text-ink")}>
+              {sentenceCase(step.summary) || label}
+            </p>
+            <p className="mt-0.5 text-label text-ink-muted">
+              {label}
+              {step.actor ? ` · ${step.actor}` : ""}
+              {step.latency_ms !== null ? ` · ${formatMs(step.latency_ms)}` : ""}
+            </p>
+          </div>
+        </div>
+        {/* Consistent corner position, every card, always. */}
+        <OriginPill simulated={step.simulated} className="shrink-0" />
       </div>
 
-      <p className="mt-1 pl-6 text-[11px] leading-relaxed text-chalk-muted">{step.summary}</p>
+      {reasonCodes.length ? (
+        <div className="ml-6 mt-2.5 flex flex-wrap gap-1.5">
+          <DecisionPill decision={step.name} />
+          {reasonCodes.map((code) => (
+            <Badge key={code} tone="neutral" className="font-mono normal-case tracking-normal">
+              {code}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
 
-      <StepEvidence step={step} />
+      {evidence ? <InjectionEvidenceCard {...evidence} /> : null}
+
+      {detailEntries.length > 0 ? (
+        <div className="ml-6 mt-2">
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="text-caption font-medium text-accent hover:text-accent-hover"
+          >
+            {open ? "Hide details" : "View details"}
+          </button>
+          {open ? (
+            <pre className="mt-2 max-h-48 overflow-auto rounded-control border border-line bg-surface-sunken p-2.5 font-mono text-data text-ink-secondary">
+              {JSON.stringify(Object.fromEntries(detailEntries), null, 2)}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+function injectionEvidence(
+  step: TranscriptStep,
+): { hash: string; known: boolean } | null {
+  if (step.name !== "fetch_merchant_page") return null;
+  const hash = step.detail.content_sha256;
+  if (typeof hash !== "string") return null;
+  return { hash, known: step.detail.is_known_injection_payload === true };
+}
+
 /**
- * Surfaces the two details that carry evidentiary weight, rather than dumping
- * the whole payload: the fetched page's hash (injection integrity) and the
- * gateway's reason codes.
+ * The injection-integrity callout, as a labelled evidence card rather than
+ * inline red text. This is the strongest proof the product has that an
+ * attack reached the agent unmodified, so it gets its own clearly bounded
+ * space instead of being folded into the log.
  */
-function StepEvidence({ step }: { step: TranscriptStep }) {
-  const detail = step.detail ?? {};
-
-  if (step.name === "fetch_merchant_page" && typeof detail.content_sha256 === "string") {
-    const known = detail.is_known_injection_payload === true;
-    return (
-      <div className="mt-2 ml-6 rounded border border-hairline bg-ink/60 px-2.5 py-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="label-xs">sha-256</span>
-          <code className="font-mono text-[10px] text-chalk">
-            {shortHash(detail.content_sha256 as string, 24)}
-          </code>
-          {known ? (
-            <Badge tone="block">known injection payload</Badge>
-          ) : (
-            <Badge tone="neutral">clean page</Badge>
-          )}
-        </div>
-        <p className="mt-1.5 text-[10px] leading-relaxed text-chalk-faint">
-          Hashed at the tool boundary — the bytes the agent actually received. Nothing
-          upstream rewrote the content.
-        </p>
+function InjectionEvidenceCard({ hash, known }: { hash: string; known: boolean }) {
+  return (
+    <div
+      className={cn(
+        "ml-6 mt-2.5 rounded-control border px-3 py-2.5",
+        known ? "border-block-line bg-block-tint" : "border-line bg-surface-sunken",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Fingerprint size={14} className={known ? "text-block" : "text-ink-muted"} aria-hidden />
+        <span className={cn("text-caption font-medium", known ? "text-block" : "text-ink-secondary")}>
+          {known ? "Known injection payload" : "Content hash recorded"}
+        </span>
       </div>
-    );
-  }
-
-  if (step.kind === "gateway_decision") {
-    const codes = Array.isArray(detail.reason_codes) ? (detail.reason_codes as string[]) : [];
-    return codes.length ? (
-      <div className="mt-2 ml-6 flex flex-wrap gap-1.5">
-        {codes.map((code) => (
-          <Badge key={code} tone={step.name === "ALLOW" ? "allow" : step.name === "BLOCK" ? "block" : "approval"}>
-            {code}
-          </Badge>
-        ))}
-      </div>
-    ) : null;
-  }
-
-  return null;
+      <p className="mt-1 text-label text-ink-muted">Content hash (SHA-256)</p>
+      <code className="block truncate font-mono text-data text-ink-secondary">
+        {shortHash(hash, 40)}
+      </code>
+      <p className="mt-1.5 text-caption text-ink-secondary">
+        Hashed at the moment the agent read this page. Nothing upstream altered the content
+        before it reached this point.
+      </p>
+    </div>
+  );
 }
