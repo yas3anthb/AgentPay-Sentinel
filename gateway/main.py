@@ -23,9 +23,26 @@ logging.basicConfig(
 log = logging.getLogger("agentpay")
 
 
+_CLASSIFIER_RELAXED_ENVS = {"dev", "test", "local"}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+
+    # ALLOW_DEGRADED_CLASSIFIER turns off the single control that keeps a
+    # classifier outage from becoming an open door. It is a dev convenience and
+    # nothing else: refuse to start with it set anywhere that is not explicitly
+    # a development environment.
+    if settings.allow_degraded_classifier and (
+        settings.environment.lower() not in _CLASSIFIER_RELAXED_ENVS
+    ):
+        raise RuntimeError(
+            "ALLOW_DEGRADED_CLASSIFIER is set but ENVIRONMENT="
+            f"{settings.environment!r}. This flag disables fail-closed on the "
+            "content classifier and must never be enabled outside dev/test."
+        )
+
     await init_db()
     try:
         await get_store().ping()

@@ -15,7 +15,7 @@ can only spend if a typed, signed, policy-approved transaction survives the whol
         │  intent    │ 1 Identity & request integrity   JWT · scope ·    │
         └───────────▶│                                  revocation set   │
                      │ 2 Canonical transaction builder  typed only       │
-                     │ 3 Content security analyzer      rules + OpenAI   │
+                     │ 3 Content security analyzer      rules+sim+OpenAI  │
                      │ 4 Risk engine                    SIGNALS ONLY     │
                      │ 5 OPA / Rego                     THE decision     │
                      │ 6 Payment authorization          scoped token,    │
@@ -185,12 +185,30 @@ Content cannot close the block and start issuing orders — it would have to gue
 first. The system prompt is a fixed constant and tells the model that anything claiming the
 block has ended is itself evidence of an attack.
 
-### 3. Fail closed on the classifier
+### 3. Three detection layers, and fail closed when the LLM one is gone
 
-If the OpenAI call times out, rate-limits, returns malformed JSON, or the key is missing, the
-analyzer reports `classifier_degraded: true` — it does **not** fabricate a high injection
-confidence, because the audit log should say "the classifier was unavailable", not "we
-detected an injection". `policies/injection.rego` then denies:
+Content analysis is not "call an LLM". Three layers feed one `injection_confidence`, combined
+by taking the **strongest**, not the average (averaging lets a confident detector get diluted
+by a hedging one):
+
+1. **Deterministic regex rules** (`gateway/analyzer/rules.py`) — high-precision, catches known
+   phrasings, runs first so an obvious attack never depends on a network call. De-obfuscates
+   unicode confusables and zero-width characters before matching.
+2. **Similarity to known attacks** (`gateway/analyzer/similarity.py`) — deterministic and
+   offline. Character-shingle Jaccard against a corpus of canonical payloads (catches a
+   lightly reworded known attack), plus co-occurrence of intent-facet word groups within a
+   window (catches a *novel paraphrase* of a known intent that no regex anticipated). A lone
+   match here tops out at "a human should look"; low-trust provenance or corroboration from
+   another layer escalates it to a block. `tests/test_injection_recall.py` measures the
+   recall this layer adds on a held-out set the regexes miss.
+3. **LLM classifier** (`gateway/analyzer/llm.py`, OpenAI) — generalises furthest.
+
+Layers 1 and 2 are deterministic, so **"the LLM classifier is unavailable" still means two
+detection layers, not zero.** When the OpenAI call times out, rate-limits, returns malformed
+JSON, or the key is missing, the analyzer reports `classifier_degraded: true` and its own LLM
+confidence stays `0.0` — it does **not** fabricate a verdict; the audit log should say "the
+LLM classifier was unavailable", not "we detected an injection". The regex and similarity
+layers still set a floor under `injection_confidence`. `policies/injection.rego` then denies:
 
 ```rego
 deny contains "CLASSIFIER_UNAVAILABLE_FAIL_CLOSED" if {
@@ -199,7 +217,8 @@ deny contains "CLASSIFIER_UNAVAILABLE_FAIL_CLOSED" if {
 }
 ```
 
-This is a small line that distinguishes "we called an LLM" from "we built a security system".
+`ALLOW_DEGRADED_CLASSIFIER` is the one lever that relaxes this, and the gateway **refuses to
+start** with it set unless `ENVIRONMENT` is `dev`/`test`/`local`.
 
 ### 4. Payment execution is a state machine, not a hope
 
@@ -287,27 +306,41 @@ deny contains "APPROVAL_BINDING_MISMATCH" if {
 
 Covered by `test_approval_is_bound_to_what_the_human_saw`.
 
+### 10. Money is integer minor units at the policy boundary
+
+Amounts travel the wire as decimal strings (`gateway/schemas.py` rejects floats on money
+fields) and are stored as `Numeric(12, 2)`. The one place exactness used to leak was the
+hop into OPA: JSON has no decimal type, so a `Decimal` became a float64 and every `>` and
+`==` in Rego was a binary comparison. `gateway/money.py` now converts every amount, limit,
+threshold and approval binding to a whole number of paise/cents before it reaches the PDP,
+so the policy compares integers and the `bound_amount != amount` check above is genuinely
+exact. The JWT `amount` claim and the wire format are unchanged.
+
 ## Running without an OpenAI key
 
-Without a key the classifier is unavailable and the policy fails closed — **every**
-transaction is blocked with `CLASSIFIER_UNAVAILABLE_FAIL_CLOSED`. That is the system working
-correctly, but it makes for a short demo. For an offline run:
+The default `.env.example` runs the classifier **live**: add `OPENAI_API_KEY` and go. Without
+a key the LLM layer is unavailable and the policy fails closed — **every** transaction is
+blocked with `CLASSIFIER_UNAVAILABLE_FAIL_CLOSED`. That is the system working correctly, but
+it makes for a short demo. For an offline run:
 
 ```bash
 # .env
 CLASSIFIER_OFFLINE=true
-ALLOW_DEGRADED_CLASSIFIER=true    # DEV ONLY
+ALLOW_DEGRADED_CLASSIFIER=true    # DEV ONLY — the gateway refuses to start
+                                  # with this set unless ENVIRONMENT is dev/test/local
 ```
 
-`ALLOW_DEGRADED_CLASSIFIER` feeds `context.allow_degraded_classifier` into OPA, which is the
-one lever that relaxes the fail-closed rule. The deterministic regex layer still runs and
-still catches every payload in Demo B on its own — the classifier layer is what generalises
-to phrasings the rules have not seen. Never set this flag anywhere real.
+`ALLOW_DEGRADED_CLASSIFIER` feeds `context.allow_degraded_classifier` into OPA, the one lever
+that relaxes the fail-closed rule. Even then you are not running blind: the **regex layer and
+the similarity layer** (§3) are both deterministic and both still run — the similarity layer
+in particular generalises past the exact phrasings the regexes know. `make policy-test` and
+`tests/test_injection_recall.py` cover what each layer catches. Never set this flag anywhere
+real.
 
 ## Testing
 
 ```bash
-make test          # 100 gateway tests + 29 Rego policy tests
+make test          # 104 gateway tests + 29 Rego policy tests
 make policy-test   # just the Rego
 make agent-test    # 33 agent-simulator tests (separate venv)
 make relay-test    # 10 event-relay tests
@@ -373,16 +406,14 @@ doesn't:
   externally. See §8.
 - **The fingerprint window has an edge case** at bucket boundaries. See §6.
 - **Revocation is near-real-time**, not instant. See §7.
-- **Amounts cross into Rego as JSON numbers** and are compared as float64. At payment
-  magnitudes this is exact enough, and any residual rounding can only push a borderline
-  transaction *into* a block, never out of one. Integer minor units is the right hardening
-  before real money.
 - **The delegation keypair is a static file** generated by `scripts/gen_keys.py`. Real
   deployments sign in a KMS and the gateway only ever holds the public half.
 - **`/v1/admin/*` is unauthenticated** in this build. The control plane is where a real
   deployment puts human authentication and its own audit trail.
-- **The regex layer is high-precision, not high-recall.** It catches known phrasings; the
-  classifier is what generalises. With the classifier disabled you are running one layer.
+- **The regex layer is high-precision, not high-recall** on its own. The similarity layer
+  (§3) covers the recall gap deterministically, and the LLM classifier generalises furthest.
+  With the LLM classifier disabled you are running two layers, not one — but a determined
+  novel attack is still best caught with the classifier on.
 
 ## Layout
 

@@ -1,10 +1,9 @@
 # Budget enforcement: per-transaction cap, rolling daily cap, currency binding.
 #
-# Note on money and floats: amounts arrive as JSON numbers, so Rego compares
-# them as float64. At payment magnitudes (<= 10 digits, 2dp) that is exact
-# enough for these comparisons, and any residual rounding error can only push a
-# borderline transaction into a BLOCK, never out of one. Hardening this to
-# integer minor units is the right move before real money touches it.
+# Money is integer minor units here. The gateway (gateway/money.py) converts
+# every amount, limit and threshold to a whole number of paise/cents before it
+# reaches OPA, so every comparison below is an integer comparison — no float64,
+# no binary rounding on a value that gates a payment.
 package agentpay.spending
 
 import data.agentpay.thresholds

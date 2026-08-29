@@ -95,7 +95,7 @@ export async function fetchStackHealth(): Promise<StackHealth> {
     // Both modes are surfaced as first-class labelled states. A degraded
     // classifier or scripted agent reasoning is exactly what a viewer needs to
     // know up front, so neither is hidden behind a tooltip.
-    classifierMode: classifierMode(Boolean(gatewayReady)),
+    classifierMode: classifierMode(Boolean(gatewayReady), rec(g.classifier)),
     agentLlmMode: {
       label: agentMode === "offline" ? "Offline / scripted" : "Live",
       state: agentMode === "offline" ? "degraded" : simulatorReady ? "ok" : "unknown",
@@ -109,23 +109,49 @@ export async function fetchStackHealth(): Promise<StackHealth> {
   };
 }
 
-function classifierMode(reachable: boolean): StackHealth["classifierMode"] {
+function classifierMode(
+  reachable: boolean,
+  classifier: Record<string, unknown>,
+): StackHealth["classifierMode"] {
   /*
-   * The gateway does not expose its classifier mode on /readyz, and guessing
-   * would be worse than saying so: a confident "fail-closed" badge on a stack
-   * running with ALLOW_DEGRADED_CLASSIFIER=true is exactly the kind of
-   * comfortable lie this UI is supposed to avoid.
-   *
-   * The real value is observable per transaction — every decision response
-   * carries risk.signals.classifier_degraded — so the Test Console reports it
-   * from actual run data, and this strip says only what it knows.
+   * /readyz now reports the CONFIGURED classifier mode (not a live probe — a
+   * healthcheck must not spend an OpenAI call). The per-transaction truth still
+   * lives in each decision's risk.signals.classifier_degraded, because a "live"
+   * config can still degrade on a single call that times out. So this strip
+   * states the configuration and points at the per-run signal for the rest.
    */
-  return reachable
-    ? {
-        label: "Reported per transaction",
-        state: "unknown",
-        detail:
-          "The gateway does not publish classifier mode on /readyz. Run a transaction — every decision reports classifier_degraded.",
-      }
-    : { label: "Unknown", state: "unknown", detail: "gateway unreachable" };
+  if (!reachable) return { label: "Unknown", state: "unknown", detail: "gateway unreachable" };
+
+  const mode = String(classifier.llm_mode ?? "unknown");
+  const failClosed = classifier.fail_closed !== false;
+  const layers = Array.isArray(classifier.deterministic_layers)
+    ? classifier.deterministic_layers.join(" + ")
+    : "rules + similarity";
+
+  if (mode === "live") {
+    return {
+      label: "Live",
+      state: "ok",
+      detail: `LLM + ${layers}; fail-closed. Per-transaction status in each decision.`,
+    };
+  }
+  if (mode === "offline") {
+    return {
+      label: "Offline",
+      state: "degraded",
+      detail: `LLM layer skipped; ${layers} only.${failClosed ? " Fails closed." : " ALLOW_DEGRADED_CLASSIFIER is on."}`,
+    };
+  }
+  if (mode === "unconfigured") {
+    return {
+      label: "No API key",
+      state: failClosed ? "degraded" : "down",
+      detail: `LLM layer unavailable; ${layers} only.${failClosed ? " Fails closed on every transaction." : " Degraded classifier is TOLERATED — not safe."}`,
+    };
+  }
+  return {
+    label: "Reported per transaction",
+    state: "unknown",
+    detail: "Run a transaction — every decision reports classifier_degraded.",
+  };
 }

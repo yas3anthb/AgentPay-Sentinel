@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from decimal import Decimal
 
 import httpx
 
@@ -18,6 +17,7 @@ from gateway.analyzer import AnalysisResult
 from gateway.canonical import CanonicalTransaction
 from gateway.config import get_settings
 from gateway.context import PolicyContext
+from gateway.money import to_minor_units
 from gateway.schemas import Decision, RiskAssessment
 
 log = logging.getLogger("agentpay.pdp")
@@ -42,7 +42,9 @@ class ApprovalFinding:
     present: bool = False
     valid: bool = False
     expired: bool = False
-    bound_amount: float | None = None
+    # Minor units (see gateway.money), so approvals.rego can compare it to
+    # transaction.amount with an exact integer ==.
+    bound_amount: int | None = None
     bound_merchant_id: str | None = None
     bound_currency: str | None = None
     bound_cart_hash: str | None = None
@@ -59,10 +61,6 @@ class PDPResult:
     pdp_available: bool = True
 
 
-def _f(v: Decimal | float | int) -> float:
-    return float(v)
-
-
 def build_input(
     *,
     txn: CanonicalTransaction,
@@ -74,13 +72,18 @@ def build_input(
     approval: ApprovalFinding,
     allow_degraded_classifier: bool = False,
 ) -> dict:
+    # Every amount OPA sees is an integer number of minor units (see
+    # gateway.money). Rego then compares limits, spend and approval bindings as
+    # integers instead of float64 — no binary rounding on a value that gates a
+    # payment. Scores and probabilities (weighted_score, risk signals) are not
+    # money and stay as floats.
     context = ctx.to_dict()
     context.update(
         {
-            "per_transaction_limit": _f(ctx.per_transaction_limit),
-            "daily_limit": _f(ctx.daily_limit),
-            "approval_threshold": _f(ctx.approval_threshold),
-            "spent_today": _f(ctx.spent_today),
+            "per_transaction_limit": to_minor_units(ctx.per_transaction_limit),
+            "daily_limit": to_minor_units(ctx.daily_limit),
+            "approval_threshold": to_minor_units(ctx.approval_threshold),
+            "spent_today": to_minor_units(ctx.spent_today),
             "allow_degraded_classifier": allow_degraded_classifier,
         }
     )
@@ -96,7 +99,7 @@ def build_input(
             "delegation_id": txn.delegation_id,
             "merchant_id": txn.merchant_id,
             "merchant_verified_claim": txn.merchant_verified_claim,
-            "amount": _f(txn.amount),
+            "amount": to_minor_units(txn.amount),
             "currency": txn.currency,
             "cart_hash": txn.cart_hash,
             "item_count": txn.item_count,

@@ -30,4 +30,25 @@ async def readyz() -> dict:
     except Exception as exc:
         checks["opa"] = f"error: {exc}"
     ready = all(v == "ok" for v in checks.values())
-    return {"ready": ready, "checks": checks, "policy_version": settings.policy_version}
+
+    # Configured classifier mode — NOT a live probe (a healthcheck should not
+    # spend an OpenAI call). The per-transaction truth still lives in each
+    # decision's risk.signals.classifier_degraded: a "live" config can still
+    # degrade on a single call that times out.
+    if settings.classifier_offline:
+        llm_mode = "offline"
+    elif not settings.openai_api_key:
+        llm_mode = "unconfigured"
+    else:
+        llm_mode = "live"
+
+    return {
+        "ready": ready,
+        "checks": checks,
+        "policy_version": settings.policy_version,
+        "classifier": {
+            "llm_mode": llm_mode,
+            "fail_closed": not settings.allow_degraded_classifier,
+            "deterministic_layers": ["rules", "similarity"],
+        },
+    }

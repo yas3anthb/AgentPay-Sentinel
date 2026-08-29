@@ -4,6 +4,10 @@ import data.agentpay.decision
 
 # A clean, fully-compliant transaction. Every other case in this file is this
 # object with one field changed, so a test failure names the exact cause.
+#
+# Money is integer minor units (cents), matching gateway/money.py: 4999 == 49.99,
+# 20000 == a 200.00 limit. Probabilities, risk scores and counts are NOT money
+# and are left as-is.
 base := {
 	"identity": {"valid": true, "user_id": "user_1", "reason_codes": []},
 	"transaction": {
@@ -12,7 +16,7 @@ base := {
 		"delegation_id": "del_1",
 		"merchant_id": "merch_acme",
 		"merchant_verified_claim": true,
-		"amount": 49.99,
+		"amount": 4999,
 		"currency": "USD",
 		"cart_hash": "cart_abc",
 		"item_count": 1,
@@ -38,14 +42,14 @@ base := {
 		"policy_found": true,
 		"policy_version": "v1.4.2",
 		"policy_revoked": false,
-		"per_transaction_limit": 200,
-		"daily_limit": 500,
+		"per_transaction_limit": 20000,
+		"daily_limit": 50000,
 		"policy_currency": "USD",
-		"spent_today": 20,
+		"spent_today": 2000,
 		"allowed_merchants": [],
 		"blocked_merchants": [],
 		"require_verified_merchant": true,
-		"approval_threshold": 150,
+		"approval_threshold": 15000,
 		"max_transactions_per_hour": 10,
 		"transactions_last_hour": 1,
 		"merchant_known": true,
@@ -95,13 +99,13 @@ test_injection_hard_block_ignores_low_total_score if {
 }
 
 test_budget_exceeded_blocks if {
-	r := decision.result with input as with_txn({"amount": 500})
+	r := decision.result with input as with_txn({"amount": 50000})
 	r.decision == "BLOCK"
 	"BUDGET_EXCEEDED" in r.reason_codes
 }
 
 test_daily_budget_exceeded_blocks if {
-	r := decision.result with input as with_ctx({"spent_today": 480})
+	r := decision.result with input as with_ctx({"spent_today": 48000})
 	r.decision == "BLOCK"
 	"DAILY_BUDGET_EXCEEDED" in r.reason_codes
 }
@@ -157,7 +161,7 @@ test_amount_changed_after_approval_blocks if {
 		"present": true,
 		"valid": true,
 		"expired": false,
-		"bound_amount": 12.00,
+		"bound_amount": 1200,
 		"bound_merchant_id": "merch_acme",
 		"bound_currency": "USD",
 		"bound_cart_hash": "cart_abc",
@@ -172,7 +176,7 @@ test_merchant_swapped_after_approval_blocks if {
 		"present": true,
 		"valid": true,
 		"expired": false,
-		"bound_amount": 49.99,
+		"bound_amount": 4999,
 		"bound_merchant_id": "merch_original",
 		"bound_currency": "USD",
 		"bound_cart_hash": "cart_abc",
@@ -199,7 +203,7 @@ test_degraded_classifier_tolerated_when_policy_says_so if {
 # --- approval routing ------------------------------------------------------
 
 test_above_threshold_requires_approval if {
-	r := decision.result with input as with_txn({"amount": 175})
+	r := decision.result with input as with_txn({"amount": 17500})
 	r.decision == "REQUIRE_APPROVAL"
 	"ABOVE_APPROVAL_THRESHOLD" in r.reason_codes
 }
@@ -218,11 +222,11 @@ test_high_composite_score_requires_approval if {
 }
 
 test_correctly_bound_approval_allows if {
-	inp := object.union(with_txn({"amount": 175}), {"approval": {
+	inp := object.union(with_txn({"amount": 17500}), {"approval": {
 		"present": true,
 		"valid": true,
 		"expired": false,
-		"bound_amount": 175,
+		"bound_amount": 17500,
 		"bound_merchant_id": "merch_acme",
 		"bound_currency": "USD",
 		"bound_cart_hash": "cart_abc",

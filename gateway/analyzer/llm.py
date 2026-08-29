@@ -87,10 +87,16 @@ class ClassifierResult:
 
     @classmethod
     def degraded_result(cls, reason: str, model: str = "") -> "ClassifierResult":
-        """Fail-closed shape: no verdict is claimed, and `degraded` is set so
-        the PDP can deny. We do NOT fabricate a high confidence here — the
-        audit log should say 'the classifier was unavailable', not 'we detected
-        an injection'."""
+        """Fail-closed shape: this layer claims no verdict, and `degraded` is
+        set so the PDP can deny. Its own confidence stays 0.0 — the audit log
+        should say 'the LLM classifier was unavailable', not 'we detected an
+        injection'.
+
+        The overall `injection_confidence` can still be non-zero when the LLM
+        is degraded: `analyzer.combine` takes the max across the rule and
+        similarity layers too, so those set a floor. That is real evidence from
+        the deterministic layers, not a fabricated classifier verdict, and
+        `classifier_degraded` remains true regardless."""
         return cls(
             injection_detected=False,
             confidence=0.0,

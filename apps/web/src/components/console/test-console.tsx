@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Fingerprint } from "lucide-react";
 
 import { ConsistencyCheck } from "@/components/console/consistency-check";
-import { DecisionCard, fromRaw, fromRun } from "@/components/console/decision-card";
+import { DecisionCard } from "@/components/console/decision-card";
 import { ScenarioForm } from "@/components/console/scenario-form";
 import { TranscriptPanel } from "@/components/console/transcript-panel";
 import { StagesTable } from "@/components/pipeline/stages-table";
@@ -12,95 +11,32 @@ import { PipelineStage } from "@/components/pipeline/pipeline-stage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
-import { isSimulatorError, type SimulatorError } from "@/lib/api/transcript";
-import { reducePipeline } from "@/lib/pipeline";
-import { approveRun, runRawIntent, runSimulation, type RawIntentForm } from "@/lib/run-scenario";
-import { SCENARIOS, useConsole } from "@/lib/store";
-import { usePrefersReducedMotion, useStageEvents } from "@/lib/use-stage-events";
+import { type SimulatorError } from "@/lib/api/transcript";
+import { useConsole } from "@/lib/store";
+import { useScenarioRunner } from "@/lib/use-scenario-runner";
+import { usePrefersReducedMotion } from "@/lib/use-stage-events";
 import { shortHash } from "@/lib/utils";
-
-const DEFAULT_RAW: RawIntentForm = {
-  merchantId: "merch_beanery",
-  amount: "21.25",
-  currency: "USD",
-  sku: "BEAN-ETH-1KG",
-  itemName: "Ethiopian whole bean 1kg",
-  quantity: 2,
-  purpose: "Monthly coffee restock for the office kitchen",
-  merchantContent:
-    "Single-origin Ethiopian coffee, 1kg whole bean, medium roast. Ships in 2 business days.",
-  sourceType: "official_api",
-};
 
 export function TestConsole() {
   const {
     scenario,
     phase,
-    requestId,
     run,
-    rawDecision,
     error,
     setScenario,
-    beginRun,
-    setEvents,
-    finishRun,
-    finishRaw,
-    failRun,
-  } = useConsole();
+    rawForm,
+    setRawForm,
+    instruction,
+    setInstruction,
+    socketState,
+    pipeline,
+    busy,
+    start,
+    approve,
+    view,
+  } = useScenarioRunner();
 
   const reducedMotion = usePrefersReducedMotion();
-  const [rawForm, setRawForm] = useState<RawIntentForm>(DEFAULT_RAW);
-  const [instruction, setInstruction] = useState(
-    "Restock the office kitchen with coffee, keep it under $100.",
-  );
-
-  // The raw path carries its own X-Request-Id, so it can be watched precisely.
-  // Agent runs go through the simulator, which does not forward that header,
-  // so those watch the firehose instead.
-  const { events, socketState, reset: resetEvents } = useStageEvents(
-    scenario === "raw" ? requestId : null,
-    true,
-  );
-
-  useEffect(() => setEvents(events), [events, setEvents]);
-  const pipeline = useMemo(() => reducePipeline(events), [events]);
-
-  const busy = phase === "running";
-
-  const start = useCallback(async () => {
-    resetEvents();
-    const def = SCENARIOS.find((s) => s.id === scenario)!;
-    const id = scenario === "raw" ? `web_${crypto.randomUUID().slice(0, 16)}` : null;
-    beginRun(id);
-    try {
-      if (def.path === null) {
-        finishRaw(await runRawIntent(rawForm, id!));
-      } else {
-        finishRun(await runSimulation(def.path, { instruction, budget: "100.00" }));
-      }
-    } catch (thrown) {
-      failRun(
-        isSimulatorError(thrown)
-          ? thrown
-          : { error: "REQUEST_FAILED", message: String((thrown as Error)?.message ?? thrown) },
-      );
-    }
-  }, [scenario, rawForm, instruction, beginRun, finishRaw, finishRun, failRun, resetEvents]);
-
-  const approve = useCallback(async () => {
-    if (!run) return;
-    try {
-      finishRun(await approveRun(run.run_id));
-    } catch (thrown) {
-      failRun(
-        isSimulatorError(thrown)
-          ? thrown
-          : { error: "APPROVAL_FAILED", message: String(thrown) },
-      );
-    }
-  }, [run, finishRun, failRun]);
-
-  const view = run ? fromRun(run) : rawDecision ? fromRaw(rawDecision) : null;
 
   return (
     <div className="grid gap-5 xl:grid-cols-[330px_minmax(0,1fr)_400px]">

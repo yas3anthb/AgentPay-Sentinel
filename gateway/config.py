@@ -40,7 +40,9 @@ class Settings(BaseSettings):
     # --- OpenAI classifier ---
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
-    openai_timeout_seconds: float = 8.0
+    # Tight on purpose: the deterministic rule + similarity layers are the floor,
+    # so a slow classifier should degrade fast rather than hold up a payment.
+    openai_timeout_seconds: float = 4.0
     # Fail-closed: if the classifier errors or times out we emit a BLOCK-grade
     # signal rather than waving the transaction through.
     classifier_fail_closed: bool = True

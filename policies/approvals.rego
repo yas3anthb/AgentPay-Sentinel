@@ -4,6 +4,10 @@
 # If amount, merchant, or currency moved after the approval was granted, the
 # approval is void — this is the "approve $12 of coffee, execute $1,200 of gift
 # cards" attack.
+#
+# bound_amount and transaction.amount are both integer minor units (see
+# gateway/money.py), so the `!=` below is an exact integer comparison — not a
+# float-equality check that could miss a sub-cent drift.
 package agentpay.approvals
 
 import data.agentpay.thresholds

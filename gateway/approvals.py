@@ -14,6 +14,7 @@ from decimal import Decimal
 import jwt
 
 from gateway.canonical import CanonicalTransaction
+from gateway.money import to_minor_units
 from gateway.pdp import ApprovalFinding
 from gateway.store import get_store
 from gateway.tokens import issue_approval_token, verify_approval_token
@@ -119,7 +120,9 @@ async def evaluate_token(token: str | None) -> ApprovalFinding:
         present=True,
         valid=True,
         expired=False,
-        bound_amount=float(Decimal(str(claims.get("bound_amount", "0")))),
+        # Minor units, matching how build_input renders transaction.amount, so
+        # approvals.rego's APPROVAL_BINDING_MISMATCH check is an exact int ==.
+        bound_amount=to_minor_units(claims.get("bound_amount", "0")),
         bound_merchant_id=claims.get("bound_merchant_id"),
         bound_currency=claims.get("bound_currency"),
         bound_cart_hash=claims.get("bound_cart_hash"),
