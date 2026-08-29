@@ -1,4 +1,4 @@
-.PHONY: help install keys opa test policy-test agent-install agent-test agent-demo lint up down logs demo demo-clean demo-injection dashboard reconcile clean
+.PHONY: help install keys opa test policy-test agent-install agent-test agent-demo lint up down logs demo demo-clean demo-injection dashboard reconcile clean relay-test web-install web-dev web-build web-gen-api
 
 VENV := .venv
 PY   := $(VENV)/bin/python
@@ -46,12 +46,29 @@ agent-demo: ## Run the agent scenarios against the running stack
 	@curl -sS -X POST localhost:9200/simulate/adversarial -H 'content-type: application/json' -d '{}' | \
 	  python3 -c "import json,sys; d=json.load(sys.stdin); print(d['decision'], d['reason_codes'], '| provider calls:', d['provider_calls']['delta'], '| injection intact:', d['injection']['reached_agent_unmodified'])"
 
-up: ## Start the whole stack (gateway, OPA, Redis, Postgres, provider, agent, dashboard)
+relay-test: ## Run the event relay's tests
+	cd apps/event-relay && ../../$(VENV)/bin/python -m pytest -q
+
+web-install: ## Install the frontend's dependencies
+	cd apps/web && npm install
+
+web-gen-api: ## Regenerate typed API clients from both live OpenAPI schemas
+	cd apps/web && npm run gen:api
+
+web-dev: ## Run the frontend against a locally-running stack
+	cd apps/web && npm run dev
+
+web-build: ## Typecheck and production-build the frontend
+	cd apps/web && npx tsc --noEmit && npm run build
+
+up: ## Start the whole stack (web, gateway, OPA, Redis, Postgres, provider, agent, relay)
 	docker compose up --build -d
+	@echo "web       http://localhost:3000        <- start here"
 	@echo "gateway   http://localhost:8080/docs"
 	@echo "agent     http://localhost:9200/docs"
-	@echo "dashboard http://localhost:8501"
+	@echo "relay     http://localhost:9300/readyz"
 	@echo "provider  http://localhost:9100/healthz"
+	@echo "dashboard http://localhost:8501        (legacy Streamlit)"
 
 down: ## Stop the stack and remove volumes
 	docker compose down -v

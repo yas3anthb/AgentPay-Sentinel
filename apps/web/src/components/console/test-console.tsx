@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ConsistencyCheck } from "@/components/console/consistency-check";
 import { DecisionCard, fromRaw, fromRun } from "@/components/console/decision-card";
 import { ScenarioForm } from "@/components/console/scenario-form";
 import { TranscriptPanel } from "@/components/console/transcript-panel";
@@ -206,6 +207,13 @@ export function TestConsole() {
               providerDelta={run?.provider_calls.delta ?? null}
               isAdversarial={scenario === "adversarial"}
             />
+            <div className="px-4 pb-4">
+              <ConsistencyCheck
+                state={pipeline}
+                providerDelta={run?.provider_calls.delta}
+                decision={view.decision}
+              />
+            </div>
           </Panel>
         ) : null}
       </div>

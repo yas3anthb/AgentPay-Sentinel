@@ -48,11 +48,40 @@ make demo                    # runs both demos
 
 | Service | URL |
 |---|---|
+| **Web app** | **http://localhost:3000** — start here |
 | Gateway (Swagger) | http://localhost:8080/docs |
 | Agent simulator | http://localhost:9200/docs |
-| Dashboard | http://localhost:8501 |
+| Event relay | http://localhost:9300/readyz |
 | Mock provider | http://localhost:9100/healthz |
 | OPA | http://localhost:8181 |
+| Streamlit dashboard | http://localhost:8501 (legacy) |
+
+## The frontend
+
+`apps/web/` is the primary demo surface: Next.js 14 + TypeScript, with a 3D
+pipeline visualisation driven by real stage events. Its governing rule is that
+every visual claim traces to data from a real service, and anything scripted is
+permanently marked as such — a scripted agent step never looks like a live one,
+and a failed run shows the raw error rather than a synthesized transcript.
+
+On a blocked run it cross-checks two independent sources — the gateway's stage
+events and the mock provider's own call counter — and says "sources agree", or
+warns loudly if they ever don't.
+
+See [`apps/web/README.md`](apps/web/README.md).
+
+## Live pipeline events
+
+Honest per-stage timing can only be measured where the stages run, so the
+gateway publishes one event per stage boundary to Redis. That instrumentation
+is emit-only and wrapped: a failure is logged and swallowed, so a broken
+visualiser can neither block a payment nor let one through.
+`tests/test_events.py` pins that property, including the case where a detail
+object's `__str__` raises.
+
+`apps/event-relay/` owns the WebSocket fan-out, keeping long-lived connections
+out of the payment path. It is read-only and the gateway does not depend on it
+being up.
 
 ## The agent
 
@@ -279,9 +308,11 @@ to phrasings the rules have not seen. Never set this flag anywhere real.
 ## Testing
 
 ```bash
-make test          # 92 gateway tests + 29 Rego policy tests
+make test          # 100 gateway tests + 29 Rego policy tests
 make policy-test   # just the Rego
 make agent-test    # 33 agent-simulator tests (separate venv)
+make relay-test    # 10 event-relay tests
+make web-build     # frontend typecheck + production build
 ```
 
 The end-to-end tests in `tests/test_pipeline.py` do **not** stub the PDP — they shell out to
@@ -377,4 +408,6 @@ scripts/           gen_keys.py · demo_clean.py · demo_injection.py
 apps/
   agent-simulator/ CrewAI + LangChain + LangGraph shopping agent whose only
                    money-moving tool is this gateway
+  event-relay/     read-only WebSocket fan-out for pipeline stage events
+  web/             Next.js product frontend — the primary demo surface
 ```
