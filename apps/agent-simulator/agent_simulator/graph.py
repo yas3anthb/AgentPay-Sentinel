@@ -85,14 +85,22 @@ class GraphDeps:
         *,
         adversarial: bool,
         idempotency_key: str | None = None,
+        correlation_id: str | None = None,
     ) -> None:
         self.settings = settings
         self.transcript = transcript
         self.client = client
         self.adversarial = adversarial
+        # One id for the whole run: every gateway call this run makes carries it
+        # as X-Request-Id, so the live pipeline stream and the audit trail are
+        # both filterable to this exact run.
+        self.correlation_id = correlation_id
         self.storefront_tools = build_storefront_tools(transcript, adversarial=adversarial)
         self.payment_tool = build_sentinel_tool(
-            client, transcript, idempotency_key=idempotency_key
+            client,
+            transcript,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
         )
         self.agents: tuple[Any, Any] | None = None
         self.llm: Any = None
@@ -237,7 +245,7 @@ def make_nodes(deps: GraphDeps) -> dict[str, Any]:
                 }
             ],
             "total": total,
-            "currency": "USD",
+            "currency": "INR",
             "review_verdict": verdict,
         }
 
@@ -246,7 +254,7 @@ def make_nodes(deps: GraphDeps) -> dict[str, Any]:
         args = PaymentIntentArgs(
             merchant_id=state["merchant_id"],
             amount=state["total"],
-            currency=state.get("currency", "USD"),
+            currency=state.get("currency", "INR"),
             items=state["cart"],
             purpose=state["instruction"][:2000],
             merchant_content=state.get("page_content", ""),
@@ -323,7 +331,7 @@ def make_nodes(deps: GraphDeps) -> dict[str, Any]:
         args = PaymentIntentArgs(
             merchant_id=state["merchant_id"],
             amount=state["total"],
-            currency=state.get("currency", "USD"),
+            currency=state.get("currency", "INR"),
             items=state["cart"],
             purpose=state["instruction"][:2000],
             merchant_content=state.get("page_content", ""),
@@ -336,6 +344,7 @@ def make_nodes(deps: GraphDeps) -> dict[str, Any]:
             deps.client,
             deps.transcript,
             idempotency_key=f"crew-approved-{uuid.uuid4().hex[:12]}",
+            correlation_id=deps.correlation_id,
         )
         approved_tool.func(**args.model_dump())
         decision_step = next(

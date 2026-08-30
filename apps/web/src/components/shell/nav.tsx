@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/how-it-works", label: "How It Works" },
   { href: "/agents", label: "My Agents" },
   { href: "/audit", label: "Audit & Policy" },
+  { href: "/telegram", label: "Telegram" },
 ];
 
 /**

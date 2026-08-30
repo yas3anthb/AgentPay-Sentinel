@@ -46,8 +46,8 @@ const REPRESENTATIVE: Record<Decision, ExplainerRun> = {
     weightedScore: 4.4,
     policyVersion: "v1.4.2",
     merchant: "merch_beanery",
-    amount: "63.75",
-    currency: "USD",
+    amount: "3750.00",
+    currency: "INR",
     source: null,
   },
   REQUIRE_APPROVAL: {
@@ -56,8 +56,8 @@ const REPRESENTATIVE: Record<Decision, ExplainerRun> = {
     weightedScore: 16.98,
     policyVersion: "v1.4.2",
     merchant: "merch_beanery",
-    amount: "170.00",
-    currency: "USD",
+    amount: "10000.00",
+    currency: "INR",
     source: null,
   },
   BLOCK: {
@@ -66,8 +66,8 @@ const REPRESENTATIVE: Record<Decision, ExplainerRun> = {
     weightedScore: 40.48,
     policyVersion: "v1.4.2",
     merchant: "merch_beanery",
-    amount: "76.00",
-    currency: "USD",
+    amount: "4800.00",
+    currency: "INR",
     source: null,
   },
 };

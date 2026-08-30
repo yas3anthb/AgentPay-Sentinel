@@ -11,8 +11,8 @@ import { useStageEvents } from "@/lib/use-stage-events";
 
 export const DEFAULT_RAW: RawIntentForm = {
   merchantId: "merch_beanery",
-  amount: "21.25",
-  currency: "USD",
+  amount: "1250.00",
+  currency: "INR",
   sku: "BEAN-ETH-1KG",
   itemName: "Ethiopian whole bean 1kg",
   quantity: 2,
@@ -23,7 +23,7 @@ export const DEFAULT_RAW: RawIntentForm = {
 };
 
 export const DEFAULT_INSTRUCTION =
-  "Restock the office kitchen with coffee, keep it under $100.";
+  "Restock the office kitchen with coffee, keep it under ₹5000.";
 
 /**
  * The scenario-running machinery shared by the Test Console and the Sandbox.
@@ -51,13 +51,11 @@ export function useScenarioRunner() {
   const [rawForm, setRawForm] = useState<RawIntentForm>(DEFAULT_RAW);
   const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
 
-  // The raw path carries its own X-Request-Id, so it can be watched precisely.
-  // Agent runs go through the simulator, which does not forward that header,
-  // so those watch the firehose instead.
-  const { events, socketState, reset: resetEvents } = useStageEvents(
-    scenario === "raw" ? requestId : null,
-    true,
-  );
+  // Every run — raw or agent-driven — now carries an X-Request-Id end to end:
+  // the raw path sets it directly, and the simulator forwards the same id to
+  // the gateway as a correlation id. So the pipeline stream is always filtered
+  // to this exact request rather than falling back to the firehose.
+  const { events, socketState, reset: resetEvents } = useStageEvents(requestId, true);
 
   useEffect(() => setEvents(events), [events, setEvents]);
   const pipeline = useMemo(() => reducePipeline(events), [events]);
@@ -67,13 +65,19 @@ export function useScenarioRunner() {
   const start = useCallback(async () => {
     resetEvents();
     const def = SCENARIOS.find((s) => s.id === scenario)!;
-    const id = scenario === "raw" ? `web_${crypto.randomUUID().slice(0, 16)}` : null;
+    const id = `web_${crypto.randomUUID().slice(0, 16)}`;
     beginRun(id);
     try {
       if (def.path === null) {
-        finishRaw(await runRawIntent(rawForm, id!));
+        finishRaw(await runRawIntent(rawForm, id));
       } else {
-        finishRun(await runSimulation(def.path, { instruction, budget: "100.00" }));
+        finishRun(
+          await runSimulation(def.path, {
+            instruction,
+            budget: "100.00",
+            correlationId: id,
+          }),
+        );
       }
     } catch (thrown) {
       failRun(

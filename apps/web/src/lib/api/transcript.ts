@@ -49,6 +49,8 @@ export interface RunSummary {
   mode: string;
   simulated_reasoning: boolean;
   status: string;
+  /** The X-Request-Id every gateway call in this run carried, for live-stream filtering. */
+  request_id: string | null;
   decision: "ALLOW" | "REQUIRE_APPROVAL" | "BLOCK" | null;
   reason_codes: string[];
   approval_request_id: string | null;
@@ -127,6 +129,7 @@ export function parseRun(raw: unknown): RunSummary {
     mode: String(r.mode ?? "unknown"),
     simulated_reasoning: r.simulated_reasoning === true,
     status: String(r.status ?? "unknown"),
+    request_id: typeof r.request_id === "string" ? r.request_id : null,
     decision: (r.decision as RunSummary["decision"]) ?? null,
     reason_codes: Array.isArray(r.reason_codes) ? r.reason_codes.map(String) : [],
     approval_request_id:

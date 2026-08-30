@@ -14,6 +14,11 @@ os.environ.setdefault("AGENT_LLM_MODE", "offline")
 
 GATEWAY = os.getenv("GATEWAY_URL", "http://localhost:8080")
 PROVIDER = os.getenv("PROVIDER_URL", "http://localhost:9100")
+CONTROL_PLANE = os.getenv("CONTROL_PLANE_URL", "http://localhost:8090")
+ADMIN_HEADERS = {
+    "X-Admin-Key": os.getenv("ADMIN_API_KEY", "dev-admin-key"),
+    "X-Admin-Id": "agent-simulator-tests",
+}
 
 
 def _up(url: str) -> bool:
@@ -41,7 +46,9 @@ def clean_stack():
     if not _up(f"{GATEWAY}/healthz"):
         yield
         return
-    httpx.post(f"{GATEWAY}/v1/admin/dev/reset", timeout=15.0).raise_for_status()
+    httpx.post(
+        f"{CONTROL_PLANE}/v1/admin/dev/reset", headers=ADMIN_HEADERS, timeout=15.0
+    ).raise_for_status()
     try:
         httpx.post(f"{PROVIDER}/_control/reset", timeout=10.0)
         httpx.post(

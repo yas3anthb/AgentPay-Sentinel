@@ -3,7 +3,7 @@
 import { gateway, type DecisionResponse } from "@/lib/api/gateway";
 import { simulator } from "@/lib/api/simulator";
 import { isSimulatorError, parseRun, type RunSummary, type SimulatorError } from "@/lib/api/transcript";
-import { SIMULATOR_URL } from "@/lib/config";
+import { CONTROL_URL, SIMULATOR_URL } from "@/lib/config";
 
 export interface RawIntentForm {
   merchantId: string;
@@ -17,21 +17,22 @@ export interface RawIntentForm {
   sourceType: "official_api" | "verified_catalog" | "scraped_page" | "email" | "unknown";
 }
 
-/** Mints a short-lived delegation token for the demo agent. */
+/** Mints a short-lived delegation token via the control plane (a separate,
+ * authenticated service — the /api/control proxy attaches the admin key). */
 async function mintToken(): Promise<string> {
-  const { data, error } = await gateway.POST("/v1/admin/tokens", {
-    body: {
+  const response = await fetch(`${CONTROL_URL}/v1/admin/tokens`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
       agent_id: "agent_shopper_01",
       user_id: "user_ada",
       delegation_id: "del_office_supplies",
       scopes: ["payments:authorize"],
       ttl_seconds: 3600,
-    },
+    }),
   });
-  if (error || !data) throw new Error("could not mint a delegation token");
-  // The gateway annotates this handler `-> dict`, so its generated type is an
-  // empty record. Narrowed at runtime rather than asserted through.
-  const token = (data as Record<string, unknown>).token;
+  if (!response.ok) throw new Error("could not mint a delegation token");
+  const token = (await response.json())?.token;
   if (typeof token !== "string") throw new Error("token endpoint returned no token");
   return token;
 }
@@ -88,12 +89,15 @@ export async function runRawIntent(
 
 export async function runSimulation(
   path: string,
-  body: { instruction: string; budget: string },
+  body: { instruction: string; budget: string; correlationId?: string | null },
 ): Promise<RunSummary> {
+  const { correlationId, ...rest } = body;
   const response = await fetch(`${SIMULATOR_URL}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    // The simulator threads this to the gateway as X-Request-Id, so the live
+    // pipeline view can follow this exact run instead of the firehose.
+    body: JSON.stringify(correlationId ? { ...rest, correlation_id: correlationId } : rest),
   });
   const payload: unknown = await response.json().catch(() => null);
 

@@ -24,6 +24,48 @@ services:
       timeout: 3s
       retries: 20
 
+  # Independent append-only anchor for the audit chain head. Separate image,
+  # separate credentials: forging the audit history now means compromising
+  # this AND the main database and rewriting both consistently.
+  checkpoint-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: checkpoint
+      POSTGRES_PASSWORD: checkpoint
+      POSTGRES_DB: checkpoint
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U checkpoint"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - checkpointdata:/var/lib/postgresql/data
+
+  # One-shot key ceremony. Generates the two RS256 keypairs and places each PEM
+  # in its own volume, so every other container mounts only the halves it is
+  # allowed to hold. In a real deployment this is a KMS and the private halves
+  # never touch a filesystem.
+  keygen:
+    build: .
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        if [ -f /k/del_priv/delegation_private.pem ]; then
+          echo "keys already present, leaving them alone";
+        else
+          python scripts/gen_keys.py &&
+          cp keys/delegation_private.pem /k/del_priv/ &&
+          cp keys/delegation_public.pem  /k/del_pub/  &&
+          cp keys/payment_private.pem    /k/pay_priv/ &&
+          cp keys/payment_public.pem     /k/pay_pub/  &&
+          echo "keygen complete";
+        fi
+    volumes:
+      - del_priv:/k/del_priv
+      - del_pub:/k/del_pub
+      - pay_priv:/k/pay_priv
+      - pay_pub:/k/pay_pub
+
   # The Policy Decision Point. Runs as its own service so the decision surface
   # is separately deployable, separately versioned, and separately auditable.
   opa:
@@ -44,27 +86,57 @@ services:
 
   provider:
     build: .
-    entrypoint: ["/app/docker-entrypoint.sh"]
     command: ["uvicorn", "mock_provider.main:app", "--host", "0.0.0.0", "--port", "9100"]
     environment:
       PROVIDER_BEHAVIOUR: ${PROVIDER_BEHAVIOUR:-success}
       PROVIDER_TIMEOUT_DELAY: ${PROVIDER_TIMEOUT_DELAY:-30}
-      JWT_PUBLIC_KEY_PATH: keys/delegation_public.pem
-      JWT_PRIVATE_KEY_PATH: keys/delegation_private.pem
+      # Verifies the gateway's scoped payment tokens — public half only.
+      PAYMENT_SIGNING_PUBLIC_KEY_PATH: /keys/pay_pub/payment_public.pem
     volumes:
-      - ./docker-entrypoint.sh:/app/docker-entrypoint.sh:ro
-      - keys:/app/keys
+      - pay_pub:/keys/pay_pub:ro
     ports:
       - "9100:9100"
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9100/healthz"]
       interval: 3s
       timeout: 3s
       retries: 20
 
+  # The control plane. Holds the delegation PRIVATE key and is the only minter
+  # of delegation tokens. Gated by X-Admin-Key. Cannot authorize a payment.
+  control-plane:
+    build: .
+    command: ["uvicorn", "control_plane.main:app", "--host", "0.0.0.0", "--port", "8090"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
+      DATABASE_URL: postgresql+asyncpg://agentpay:agentpay@postgres:5432/agentpay
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      DELEGATION_PRIVATE_KEY_PATH: /keys/del_priv/delegation_private.pem
+      DELEGATION_PUBLIC_KEY_PATH: /keys/del_pub/delegation_public.pem
+    volumes:
+      - del_priv:/keys/del_priv:ro
+      - del_pub:/keys/del_pub:ro
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keygen:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8090/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   gateway:
     build: .
-    entrypoint: ["/app/docker-entrypoint.sh"]
     command: ["uvicorn", "gateway.main:app", "--host", "0.0.0.0", "--port", "8080"]
     env_file:
       - path: .env
@@ -72,6 +144,7 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-dev}
       DATABASE_URL: postgresql+asyncpg://agentpay:agentpay@postgres:5432/agentpay
+      CHECKPOINT_DATABASE_URL: postgresql+asyncpg://checkpoint:checkpoint@checkpoint-db:5432/checkpoint
       REDIS_URL: redis://redis:6379/0
       OPA_URL: http://opa:8181
       PROVIDER_URL: http://provider:9100
@@ -79,13 +152,23 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       ALLOW_DEGRADED_CLASSIFIER: ${ALLOW_DEGRADED_CLASSIFIER:-false}
       CLASSIFIER_OFFLINE: ${CLASSIFIER_OFFLINE:-false}
+      # The gateway holds the delegation PUBLIC key only — it verifies inbound
+      # delegation JWTs and cannot mint them. It has its own payment-signing
+      # keypair for the scoped tokens it issues mid-pipeline.
+      JWT_PUBLIC_KEY_PATH: /keys/del_pub/delegation_public.pem
+      JWT_PRIVATE_KEY_PATH: /keys/absent/delegation_private.pem
+      PAYMENT_SIGNING_PRIVATE_KEY_PATH: /keys/pay_priv/payment_private.pem
+      PAYMENT_SIGNING_PUBLIC_KEY_PATH: /keys/pay_pub/payment_public.pem
     volumes:
-      - ./docker-entrypoint.sh:/app/docker-entrypoint.sh:ro
-      - keys:/app/keys
+      - del_pub:/keys/del_pub:ro
+      - pay_priv:/keys/pay_priv:ro
+      - pay_pub:/keys/pay_pub:ro
     ports:
       - "8080:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      checkpoint-db:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -93,6 +176,8 @@ services:
         condition: service_started
       provider:
         condition: service_healthy
+      keygen:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 3s
@@ -129,6 +214,8 @@ services:
       dockerfile: apps/agent-simulator/Dockerfile
     environment:
       GATEWAY_URL: http://gateway:8080
+      CONTROL_PLANE_URL: http://control-plane:8090
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
       PROVIDER_URL: http://provider:9100
       AGENT_LLM_MODE: ${AGENT_LLM_MODE:-live}
       AGENT_OPENAI_API_KEY: ${AGENT_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}
@@ -139,28 +226,66 @@ services:
     depends_on:
       gateway:
         condition: service_healthy
+      control-plane:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9200/healthz"]
       interval: 5s
       timeout: 5s
       retries: 20
 
-  # The product frontend. Proxies both backends server-side, so the browser
-  # never talks to the gateway cross-origin.
+  # DEMO ONLY. The Telegram bot — long-polling, no public URL, no port. Opt-in:
+  # only starts with `docker compose --profile telegram up`. Needs
+  # TELEGRAM_BOT_TOKEN in .env. It holds the control-plane admin key for the
+  # *link* endpoints only; it cannot authorize, block, or modify a payment.
+  # See docs/telegram-integration.md.
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: apps/telegram-bot/Dockerfile
+    profiles: ["telegram"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
+      TELEGRAM_ALLOWLIST: ${TELEGRAM_ALLOWLIST:-}
+      GATEWAY_URL: http://gateway:8080
+      SIMULATOR_URL: http://agent-simulator:9200
+      CONTROL_PLANE_URL: http://control-plane:8090
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+    depends_on:
+      control-plane:
+        condition: service_healthy
+      agent-simulator:
+        condition: service_started
+    restart: unless-stopped
+
+  # The product frontend. Proxies every backend server-side, so the browser
+  # never talks to them cross-origin and never holds the admin key.
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
     environment:
       GATEWAY_ORIGIN: http://gateway:8080
+      CONTROL_PLANE_ORIGIN: http://control-plane:8090
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
       SIMULATOR_ORIGIN: http://agent-simulator:9200
       PROVIDER_ORIGIN: http://provider:9100
       NEXT_PUBLIC_RELAY_WS_URL: ws://localhost:9300
+      # Optional: shows a one-tap t.me deep link on the Telegram tab. The bot
+      # service is not part of this build — see docs/telegram-integration.md.
+      NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
       POLICIES_DIR: /policies
     ports:
       - "3000:3000"
     depends_on:
       gateway:
+        condition: service_healthy
+      control-plane:
         condition: service_healthy
       agent-simulator:
         condition: service_started
@@ -174,4 +299,8 @@ services:
 
 volumes:
   pgdata:
-  keys:
+  checkpointdata:
+  del_priv:
+  del_pub:
+  pay_priv:
+  pay_pub:

@@ -12,9 +12,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from gateway.checkpoint import dispose_checkpoint_db, init_checkpoint_db
 from gateway.config import get_settings
 from gateway.db import dispose_db, init_db
-from gateway.routes import admin, health, payments
+from gateway.routes import health, payments
 from gateway.store import get_store, reset_store
 
 logging.basicConfig(
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
         )
 
     await init_db()
+    await init_checkpoint_db()
     try:
         await get_store().ping()
     except Exception as exc:  # pragma: no cover - startup diagnostics
@@ -56,6 +58,7 @@ async def lifespan(app: FastAPI):
     )
     yield
     await reset_store()
+    await dispose_checkpoint_db()
     await dispose_db()
 
 
@@ -72,7 +75,9 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(payments.router)
-app.include_router(admin.router)
+# The control plane (agent/policy/merchant registration, delegation revocation,
+# and delegation-token minting) is a separate service — see control_plane/.
+# The gateway holds only the delegation *public* key and can verify, never issue.
 
 
 @app.exception_handler(Exception)

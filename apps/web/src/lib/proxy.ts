@@ -13,6 +13,7 @@ export async function proxy(
   request: NextRequest,
   segments: string[],
   origin: string,
+  extraHeaders?: Record<string, string>,
 ): Promise<NextResponse> {
   const search = request.nextUrl.search;
   const target = `${origin}/${segments.join("/")}${search}`;
@@ -21,6 +22,11 @@ export async function proxy(
   for (const name of ["authorization", "content-type", "accept", "x-request-id"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+  // Server-side injected headers (e.g. the control plane's X-Admin-Key). These
+  // never originate in the browser — the key stays on the server.
+  for (const [name, value] of Object.entries(extraHeaders ?? {})) {
+    headers.set(name, value);
   }
 
   const method = request.method;

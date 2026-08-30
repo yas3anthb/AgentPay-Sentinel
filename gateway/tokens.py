@@ -22,11 +22,12 @@ APPROVAL_AUDIENCE = "agentpay-approval"
 
 
 def _private_key() -> str:
-    return pathlib.Path(get_settings().jwt_private_key_path).read_text()
+    # The payment-signing keypair, NOT the delegation keypair. See config.py.
+    return pathlib.Path(get_settings().payment_signing_private_key_path).read_text()
 
 
 def _public_key() -> str:
-    return pathlib.Path(get_settings().jwt_public_key_path).read_text()
+    return pathlib.Path(get_settings().payment_signing_public_key_path).read_text()
 
 
 @dataclass(slots=True)

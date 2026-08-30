@@ -18,3 +18,18 @@ os.environ.setdefault("REDIS_URL", "memory://")
 os.environ.setdefault("CLASSIFIER_OFFLINE", "true")
 os.environ.setdefault("JWT_PUBLIC_KEY_PATH", str(ROOT / "keys/delegation_public.pem"))
 os.environ.setdefault("JWT_PRIVATE_KEY_PATH", str(ROOT / "keys/delegation_private.pem"))
+os.environ.setdefault(
+    "PAYMENT_SIGNING_PUBLIC_KEY_PATH", str(ROOT / "keys/payment_public.pem")
+)
+os.environ.setdefault(
+    "PAYMENT_SIGNING_PRIVATE_KEY_PATH", str(ROOT / "keys/payment_private.pem")
+)
+os.environ.setdefault("DELEGATION_PRIVATE_KEY_PATH", str(ROOT / "keys/delegation_private.pem"))
+os.environ.setdefault("DELEGATION_PUBLIC_KEY_PATH", str(ROOT / "keys/delegation_public.pem"))
+os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
+
+# The edge rate limiter is exercised directly by tests/test_ratelimit.py. Every
+# other test fires many intents for one agent inside a few seconds, so raise the
+# ceilings out of the way here; the dedicated test lowers them explicitly.
+os.environ.setdefault("EDGE_RATE_LIMIT_AGENT_PER_MIN", "1000000")
+os.environ.setdefault("EDGE_RATE_LIMIT_DELEGATION_PER_MIN", "1000000")

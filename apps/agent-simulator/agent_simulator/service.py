@@ -37,6 +37,7 @@ class Run:
     deps: GraphDeps
     graph: Any
     thread_id: str
+    correlation_id: str = ""
     state: ShopperState = field(default_factory=dict)
     status: str = "created"
     provider_calls_before: int | None = None
@@ -51,6 +52,10 @@ class Run:
             "mode": "offline-deterministic" if settings.offline() else "live",
             "simulated_reasoning": settings.offline(),
             "status": self.status,
+            # The X-Request-Id every gateway call in this run carried. A live
+            # frontend subscribes to this to follow the pipeline for this run
+            # precisely rather than watching the firehose.
+            "request_id": self.correlation_id or None,
             "decision": self.state.get("decision"),
             "reason_codes": self.state.get("reason_codes", []),
             "approval_request_id": self.state.get("approval_request_id") or None,
@@ -132,8 +137,11 @@ def reset_demo_state(settings: Settings | None = None) -> dict:
     """
     settings = settings or get_settings()
     result: dict[str, Any] = {}
+    admin_headers = {"X-Admin-Key": settings.admin_api_key, "X-Admin-Id": "agent-simulator"}
     with httpx.Client(timeout=15.0) as http:
-        response = http.post(f"{settings.gateway_url}/v1/admin/dev/reset")
+        response = http.post(
+            f"{settings.control_plane_url}/v1/admin/dev/reset", headers=admin_headers
+        )
         response.raise_for_status()
         result["gateway"] = response.json()
         try:
@@ -157,9 +165,11 @@ def start_run(
     budget: str,
     adversarial: bool,
     quantity: int | None = None,
+    correlation_id: str | None = None,
     settings: Settings | None = None,
 ) -> Run:
     settings = settings or get_settings()
+    correlation_id = (correlation_id or f"crew_{uuid.uuid4().hex[:16]}")[:128]
     transcript = Transcript(
         scenario=scenario, mode="offline-deterministic" if settings.offline() else "live"
     )
@@ -181,7 +191,9 @@ def start_run(
             summary=OFFLINE_WARNING,
         )
 
-    deps = GraphDeps(settings, transcript, client, adversarial=adversarial)
+    deps = GraphDeps(
+        settings, transcript, client, adversarial=adversarial, correlation_id=correlation_id
+    )
     run = Run(
         run_id=transcript.run_id,
         scenario=scenario,
@@ -189,6 +201,7 @@ def start_run(
         deps=deps,
         graph=build_graph(deps),
         thread_id=f"thread_{uuid.uuid4().hex[:12]}",
+        correlation_id=correlation_id,
     )
 
     try:

@@ -49,8 +49,10 @@ says so — permanently, not in a tooltip.
 |---|---|
 | `/` | Pitch, live service strip, idle pipeline preview |
 | `/test` | The demo: four scenarios, 3D pipeline, transcript, decision |
+| `/sandbox` | Simulated payment-rail checkout on top of a real Sentinel run |
 | `/agents` | Delegation, spending limits, revocation, demo reset |
 | `/audit` | Hash-chain verification and a read-only Rego viewer |
+| `/telegram` | Demo-only: link a Telegram account to this user (one-time code) |
 
 ### `/test` — the four paths
 

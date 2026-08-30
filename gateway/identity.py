@@ -147,7 +147,11 @@ def mint_delegation_token(
     scopes: list[str] | None = None,
     ttl_seconds: int = 3600,
 ) -> str:
-    """Test/demo helper — stands in for the control plane's issuer."""
+    """Test/demo helper only. The real issuer is the control-plane service
+    (`control_plane/keys.py`), which is the only component that holds the
+    delegation private key. In Compose the gateway is not given that key at
+    all, so calling this there raises FileNotFoundError — which is the correct
+    behaviour for a production gateway."""
     settings = get_settings()
     key = pathlib.Path(settings.jwt_private_key_path).read_text()
     now = int(time.time())

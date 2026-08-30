@@ -1,7 +1,7 @@
 "use client";
 
 import { DEMO, type DelegationPolicy } from "@/lib/agents";
-import { GATEWAY_URL, PROVIDER_ORIGIN_PROXY } from "@/lib/config";
+import { CONTROL_URL, PROVIDER_ORIGIN_PROXY } from "@/lib/config";
 
 /**
  * Every field here is checked, live, by the real `.rego` policy files —
@@ -34,7 +34,7 @@ function rec(v: unknown): Record<string, unknown> {
 }
 
 export async function fetchMerchants(): Promise<MerchantEntry[]> {
-  const response = await fetch(`${GATEWAY_URL}/v1/admin/merchants`, { cache: "no-store" });
+  const response = await fetch(`${CONTROL_URL}/v1/admin/merchants`, { cache: "no-store" });
   if (!response.ok) return [];
   const merchants = rec(await response.json()).merchants;
   return Array.isArray(merchants) ? (merchants as MerchantEntry[]) : [];
@@ -47,7 +47,7 @@ export async function fetchMerchants(): Promise<MerchantEntry[]> {
  * just read, or a save could silently revert fields nobody meant to touch.
  */
 export async function savePolicy(policy: DelegationPolicy): Promise<void> {
-  const response = await fetch(`${GATEWAY_URL}/v1/admin/policies`, {
+  const response = await fetch(`${CONTROL_URL}/v1/admin/policies`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -74,7 +74,7 @@ export async function savePolicy(policy: DelegationPolicy): Promise<void> {
 /** Same full-upsert caution as `savePolicy`: every merchant field is
  * round-tripped from a real GET, never defaulted, before being sent back. */
 export async function saveMerchant(merchant: MerchantEntry): Promise<void> {
-  const response = await fetch(`${GATEWAY_URL}/v1/admin/merchants`, {
+  const response = await fetch(`${CONTROL_URL}/v1/admin/merchants`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(merchant),

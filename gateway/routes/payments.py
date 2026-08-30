@@ -22,7 +22,8 @@ from sqlalchemy import desc, select
 from gateway import approvals as approvals_svc
 from gateway import payments as pay
 from gateway.analyzer import AnalysisResult, analyze
-from gateway.audit import chain_head, publish_checkpoint, verify_chain
+from gateway.audit import chain_head, verify_chain
+from gateway.checkpoint import anchor_checkpoint, verify_against_checkpoints
 from gateway.canonical import build_canonical
 from gateway.config import get_settings
 from gateway.context import load_context, record_velocity
@@ -30,6 +31,7 @@ from gateway.db import session_scope
 from gateway.events import PipelineEmitter, Stage, StageStatus
 from gateway.identity import IdentityError, authenticate
 from gateway.models import AuditEvent, Transaction
+from gateway.ratelimit import RateLimitError, enforce_edge_rate_limit
 from gateway.pdp import (
     DuplicateFinding,
     IdentityFinding,
@@ -61,10 +63,11 @@ def _empty_risk(policy_version: str) -> RiskAssessment:
 
 
 async def _blocked_before_pipeline(
-    *, intent: PaymentIntent, reason_codes: list[str], message: str
+    *, intent: PaymentIntent, reason_codes: list[str], message: str, stage: str = "identity"
 ) -> DecisionResponse:
     """A block that happened before we had a canonical transaction — bad
-    identity, revoked delegation. Still fully audited."""
+    identity, revoked delegation, or an edge rate-limit rejection. Still fully
+    audited."""
     settings = get_settings()
     pa_id = f"pa_{uuid.uuid4().hex[:20]}"
     event_id, event_hash = await record_event_safe(
@@ -75,7 +78,7 @@ async def _blocked_before_pipeline(
         decision=Decision.BLOCK.value,
         reason_codes=reason_codes,
         policy_version=settings.policy_version,
-        payload={"stage": "identity", "message": message},
+        payload={"stage": stage, "message": message},
     )
     return DecisionResponse(
         payment_authorization_id=pa_id,
@@ -140,6 +143,24 @@ async def create_payment_intent(
         StageStatus.PASSED,
         {"agent_id": identity.agent_id, "delegation_id": identity.delegation_id},
     )
+
+    # --- edge rate limit: cap requests entering the pipeline, before the
+    # analyzer's LLM call. Fails open; see gateway/ratelimit.py. -----------
+    try:
+        await enforce_edge_rate_limit(identity.agent_id, identity.delegation_id)
+    except RateLimitError as exc:
+        emitter.finish(
+            Stage.IDENTITY,
+            StageStatus.BLOCKED,
+            {"reason_codes": [exc.reason_code], "scope": exc.scope, "limit": exc.limit},
+        )
+        emitter.skip_remaining(Stage.IDENTITY, [exc.reason_code])
+        return await _blocked_before_pipeline(
+            intent=intent,
+            reason_codes=[exc.reason_code],
+            message=str(exc),
+            stage="edge_rate_limit",
+        )
 
     # --- 2. Canonical Transaction Builder --------------------------------
     emitter.start(Stage.CANONICAL)
@@ -240,6 +261,7 @@ async def _run_pipeline(
         duplicate=outcome.finding,
         approval=approval,
         allow_degraded_classifier=settings.allow_degraded_classifier,
+        degraded_classifier_requires_review=settings.degraded_classifier_requires_review,
     )
     emitter.start(Stage.PDP)
     verdict: PDPResult = await evaluate(policy_input)
@@ -525,4 +547,21 @@ async def audit_events(limit: int = Query(default=100, le=1000)) -> dict:
 async def audit_verify() -> dict:
     result = await verify_chain()
     head = await chain_head()
-    return {**result, **head, "checkpoint": publish_checkpoint(head["head_hash"])}
+    # Check the current head against the *previous* independent anchor first,
+    # then lay down a fresh checkpoint. So a rewrite of the main audit store
+    # between two calls to this endpoint is caught on the second call.
+    against_anchor = await verify_against_checkpoints()
+    checkpoint = await anchor_checkpoint(head["head_hash"], head["events"])
+    return {
+        **result,
+        **head,
+        "checkpoint_verification": against_anchor,
+        "checkpoint": checkpoint,
+    }
+
+
+@router.post("/audit/checkpoint")
+async def audit_checkpoint() -> dict:
+    """Force an anchor of the current chain head into the independent store."""
+    head = await chain_head()
+    return await anchor_checkpoint(head["head_hash"], head["events"])

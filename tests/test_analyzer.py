@@ -134,6 +134,26 @@ async def test_classifier_failure_is_degraded_not_clean(monkeypatch):
     assert result.classifier_degraded_reason == "timeout"
     # Crucially: the analyzer does not invent an injection, it reports degradation.
     assert result.injection_confidence < 0.85
+    # On genuinely clean content the deterministic layers agree there is
+    # nothing there — this is what lets the policy route to human review
+    # rather than decline when the classifier is the only thing missing.
+    assert result.deterministic_confidence < 0.5
+
+
+async def test_deterministic_confidence_excludes_the_llm_layer(monkeypatch):
+    """`deterministic_confidence` must reflect rules + similarity only, so a
+    confident LLM verdict cannot mask an otherwise-clean deterministic read."""
+
+    async def very_confident(fields):
+        return llm.ClassifierResult(
+            injection_detected=True, confidence=0.99, signals=["x"],
+            recommended_action="BLOCK", model="stub",
+        )
+
+    monkeypatch.setattr(llm, "classify", very_confident)
+    result = await analyze(_txn("Single-origin coffee, 1kg. Ships in 2 days."))
+    assert result.injection_confidence >= 0.85  # driven by the LLM
+    assert result.deterministic_confidence < 0.5  # the rules/similarity saw nothing
 
 
 def test_low_trust_source_amplifies_but_never_lowers():

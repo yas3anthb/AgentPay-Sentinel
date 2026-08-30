@@ -88,6 +88,60 @@ def test_injection_payload_reaches_the_agent_byte_for_byte(toolset):
     assert recorded.detail["is_known_injection_payload"] is True
 
 
+def test_correlation_id_is_threaded_to_the_gateway_as_x_request_id(monkeypatch):
+    """A run's correlation id must reach the gateway as X-Request-Id, so the
+    live pipeline stream and the audit record are both filterable to that run
+    rather than the caller having to watch the unfiltered firehose."""
+    seen: dict = {}
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, body: dict) -> None:
+            self._body = body
+
+        def json(self) -> dict:
+            return self._body
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Client:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        def __enter__(self) -> "_Client":
+            return self
+
+        def __exit__(self, *a) -> bool:
+            return False
+
+        def post(self, url, json=None, headers=None):
+            if url.endswith("/v1/admin/tokens"):
+                return _Resp({"token": "fake.delegation.jwt"})
+            seen["submit_url"] = url
+            seen["submit_headers"] = headers or {}
+            return _Resp({"decision": "ALLOW", "state": "CONFIRMED", "reason_codes": []})
+
+    monkeypatch.setattr("agent_simulator.sentinel.httpx.Client", _Client)
+
+    transcript = Transcript()
+    tool = build_sentinel_tool(
+        SentinelClient(), transcript, correlation_id="web_deadbeefcafe0001"
+    )
+    tool.func(
+        merchant_id="merch_beanery",
+        amount="10.00",
+        currency="USD",
+        items=[{"sku": "X", "name": "Y", "quantity": 1, "unit_price": "10.00"}],
+    )
+
+    assert seen["submit_url"].endswith("/v1/payment-intents")
+    assert seen["submit_headers"].get("X-Request-Id") == "web_deadbeefcafe0001"
+    tool_call = next(s for s in transcript.steps if s.kind is StepKind.TOOL_CALL)
+    assert tool_call.detail["correlation_id"] == "web_deadbeefcafe0001"
+
+
 def test_adversarial_search_surfaces_the_poisoned_listing_first():
     assert search_catalog("coffee", adversarial=True)[0].sku == "BEAN-COL-1KG"
     clean = search_catalog("coffee", adversarial=False)

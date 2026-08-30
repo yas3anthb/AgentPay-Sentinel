@@ -1,7 +1,7 @@
 "use client";
 
 import { gateway } from "@/lib/api/gateway";
-import { GATEWAY_URL } from "@/lib/config";
+import { CONTROL_URL } from "@/lib/config";
 
 /** The demo delegation. The gateway has no "list agents" endpoint, so the
  * control plane is read through the endpoints that do exist. */
@@ -47,7 +47,7 @@ function rec(v: unknown): Record<string, unknown> {
 }
 
 export async function fetchPolicy(delegationId: string): Promise<DelegationPolicy | null> {
-  const response = await fetch(`${GATEWAY_URL}/v1/admin/policies/${delegationId}`, {
+  const response = await fetch(`${CONTROL_URL}/v1/admin/policies/${delegationId}`, {
     cache: "no-store",
   });
   if (!response.ok) return null;
@@ -59,7 +59,7 @@ export async function fetchPolicy(delegationId: string): Promise<DelegationPolic
     policy_version: String(raw.policy_version ?? ""),
     per_transaction_limit: String(raw.per_transaction_limit ?? "0"),
     daily_limit: String(raw.daily_limit ?? "0"),
-    currency: String(raw.currency ?? "USD"),
+    currency: String(raw.currency ?? "INR"),
     approval_threshold: String(raw.approval_threshold ?? "0"),
     max_transactions_per_hour: Number(raw.max_transactions_per_hour ?? 0),
     require_verified_merchant: raw.require_verified_merchant === true,
@@ -70,8 +70,11 @@ export async function fetchPolicy(delegationId: string): Promise<DelegationPolic
 }
 
 export async function fetchRevokedSet(): Promise<string[]> {
-  const { data } = await gateway.GET("/v1/admin/delegations/revoked", {});
-  const revoked = rec(data).revoked;
+  const response = await fetch(`${CONTROL_URL}/v1/admin/delegations/revoked`, {
+    cache: "no-store",
+  });
+  if (!response.ok) return [];
+  const revoked = rec(await response.json()).revoked;
   return Array.isArray(revoked) ? revoked.map(String) : [];
 }
 
@@ -82,20 +85,20 @@ export async function fetchTransactions(limit = 50): Promise<TransactionRow[]> {
 }
 
 export async function revokeDelegation(delegationId: string): Promise<void> {
-  const response = await fetch(`${GATEWAY_URL}/v1/admin/delegations/${delegationId}/revoke`, {
+  const response = await fetch(`${CONTROL_URL}/v1/admin/delegations/${delegationId}/revoke`, {
     method: "POST",
   });
   if (!response.ok) throw new Error(`revoke failed: HTTP ${response.status}`);
 }
 
 export async function reinstateDelegation(delegationId: string): Promise<void> {
-  await fetch(`${GATEWAY_URL}/v1/admin/delegations/${delegationId}/reinstate`, {
+  await fetch(`${CONTROL_URL}/v1/admin/delegations/${delegationId}/reinstate`, {
     method: "POST",
   });
 }
 
 export async function resetGatewayDemoState(): Promise<Record<string, unknown>> {
-  const response = await fetch(`${GATEWAY_URL}/v1/admin/dev/reset`, { method: "POST" });
+  const response = await fetch(`${CONTROL_URL}/v1/admin/dev/reset`, { method: "POST" });
   if (!response.ok) throw new Error(`reset refused: HTTP ${response.status}`);
   return rec(await response.json());
 }

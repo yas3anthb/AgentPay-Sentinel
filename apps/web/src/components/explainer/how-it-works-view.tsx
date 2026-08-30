@@ -10,15 +10,15 @@ import { loadExplainerRuns, type ExplainerRun } from "@/lib/explainer-data";
 const EMPTY: Record<Decision, ExplainerRun> = {
   ALLOW: {
     decision: "ALLOW", reasonCodes: [], weightedScore: 0, policyVersion: "",
-    merchant: "", amount: "0.00", currency: "USD", source: null,
+    merchant: "", amount: "0.00", currency: "INR", source: null,
   },
   REQUIRE_APPROVAL: {
     decision: "REQUIRE_APPROVAL", reasonCodes: [], weightedScore: 0, policyVersion: "",
-    merchant: "", amount: "0.00", currency: "USD", source: null,
+    merchant: "", amount: "0.00", currency: "INR", source: null,
   },
   BLOCK: {
     decision: "BLOCK", reasonCodes: [], weightedScore: 0, policyVersion: "",
-    merchant: "", amount: "0.00", currency: "USD", source: null,
+    merchant: "", amount: "0.00", currency: "INR", source: null,
   },
 };
 

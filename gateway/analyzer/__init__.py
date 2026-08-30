@@ -20,6 +20,12 @@ class AnalysisResult:
     llm_confidence: float = 0.0
     similarity_confidence: float = 0.0
     similarity_label: str = ""
+    # The same combined score with the LLM layer excluded — what the two
+    # deterministic layers alone concluded. The policy uses this to tell
+    # "the classifier is down and we have no evidence either way" apart from
+    # "the classifier is down and the deterministic layers already saw
+    # something", which are very different situations.
+    deterministic_confidence: float = 0.0
     classifier_degraded: bool = False
     classifier_degraded_reason: str = ""
     source_trust_score: float = 1.0
@@ -35,6 +41,7 @@ class AnalysisResult:
             "llm_confidence": self.llm_confidence,
             "similarity_confidence": self.similarity_confidence,
             "similarity_label": self.similarity_label,
+            "deterministic_confidence": self.deterministic_confidence,
             "classifier_degraded": self.classifier_degraded,
             "classifier_degraded_reason": self.classifier_degraded_reason,
             "source_trust_score": self.source_trust_score,
@@ -121,6 +128,14 @@ async def analyze(txn: CanonicalTransaction) -> AnalysisResult:
         llm_confidence=llm_result.confidence,
         similarity_confidence=sim_result.confidence,
         similarity_label=sim_result.label,
+        # Same function, same trust amplification, LLM omitted — so it is
+        # directly comparable to `injection_confidence` and to the thresholds.
+        deterministic_confidence=combine(
+            rule_result.confidence,
+            0.0,
+            source,
+            similarity_confidence=sim_result.confidence,
+        ),
         classifier_degraded=llm_result.degraded,
         classifier_degraded_reason=llm_result.degraded_reason,
         source_trust_score=trust.trust_score(source),

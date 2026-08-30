@@ -26,6 +26,7 @@ base := {
 		"injection_confidence": 0.02,
 		"injection_labels": [],
 		"classifier_degraded": false,
+		"deterministic_confidence": 0.02,
 		"source_trust_score": 0.95,
 	},
 	"risk": {
@@ -60,6 +61,7 @@ base := {
 		"agent_active": true,
 		"agent_allowed_categories": [],
 		"allow_degraded_classifier": false,
+		"degraded_classifier_requires_review": false,
 	},
 	"approval": {"present": false},
 	"duplicate": {"idempotency_conflict": false, "fingerprint_conflict": false},
@@ -198,6 +200,44 @@ test_degraded_classifier_tolerated_when_policy_says_so if {
 		{"context": object.union(base.context, {"allow_degraded_classifier": true})},
 	)
 	decision.result.decision == "ALLOW" with input as inp
+}
+
+# --- graceful degradation: classifier down + deterministic layers clean ----
+
+test_degraded_classifier_with_no_other_evidence_routes_to_human if {
+	inp := object.union(
+		with_sec({"classifier_degraded": true, "deterministic_confidence": 0.0}),
+		{"context": object.union(base.context, {"degraded_classifier_requires_review": true})},
+	)
+	r := decision.result with input as inp
+	r.decision == "REQUIRE_APPROVAL"
+	"CLASSIFIER_UNAVAILABLE_HUMAN_REVIEW" in r.reason_codes
+	not "CLASSIFIER_UNAVAILABLE_FAIL_CLOSED" in r.reason_codes
+}
+
+test_degraded_classifier_with_deterministic_hit_still_blocks if {
+	# The rules/similarity layers flagged it. A gap in the LLM verdict does
+	# not soften that — this is evidence of an attack, not absence of one.
+	inp := object.union(
+		with_sec({
+			"classifier_degraded": true,
+			"deterministic_confidence": 0.7,
+			"injection_confidence": 0.7,
+		}),
+		{"context": object.union(base.context, {"degraded_classifier_requires_review": true})},
+	)
+	r := decision.result with input as inp
+	r.decision == "BLOCK"
+}
+
+test_graceful_degradation_is_opt_in if {
+	# Flag off (the base default) -> unchanged hard block, byte for byte.
+	r := decision.result with input as with_sec({
+		"classifier_degraded": true,
+		"deterministic_confidence": 0.0,
+	})
+	r.decision == "BLOCK"
+	"CLASSIFIER_UNAVAILABLE_FAIL_CLOSED" in r.reason_codes
 }
 
 # --- approval routing ------------------------------------------------------

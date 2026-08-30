@@ -19,11 +19,63 @@ import asyncio
 import json
 import logging
 import secrets
+import time
 from dataclasses import dataclass, field
 
 from gateway.config import get_settings
 
 log = logging.getLogger("agentpay.analyzer.llm")
+
+# --- circuit breaker ------------------------------------------------------
+#
+# During an OpenAI outage, every request would otherwise pay the full timeout
+# (config `openai_timeout_seconds`) before falling back to the deterministic
+# layers. After `classifier_circuit_failures` consecutive transport failures
+# the breaker opens: the network call is skipped entirely for
+# `classifier_circuit_cooldown_seconds`, and `classify()` returns a degraded
+# result immediately. The deterministic rule + similarity layers still run, and
+# the policy still fails closed on `classifier_degraded` — this only removes the
+# dead wait. One trial request is allowed through once the cooldown elapses
+# (half-open); its result opens or closes the breaker again.
+#
+# State is per-process, like `_public_key`'s cache. Only transport failures
+# (timeout, API error) count — a well-formed API response that fails to parse
+# is a model problem, not an availability one, and does not trip the breaker.
+
+_circuit_open_until = 0.0
+_consecutive_failures = 0
+
+
+def reset_circuit() -> None:
+    """Test hook: clear breaker state between cases."""
+    global _circuit_open_until, _consecutive_failures
+    _circuit_open_until = 0.0
+    _consecutive_failures = 0
+
+
+def _circuit_is_open() -> bool:
+    return time.monotonic() < _circuit_open_until
+
+
+def _record_transport_failure() -> None:
+    global _circuit_open_until, _consecutive_failures
+    _consecutive_failures += 1
+    threshold = get_settings().classifier_circuit_failures
+    if threshold > 0 and _consecutive_failures >= threshold:
+        cooldown = get_settings().classifier_circuit_cooldown_seconds
+        _circuit_open_until = time.monotonic() + cooldown
+        _consecutive_failures = 0
+        log.error(
+            "classifier circuit OPEN for %.0fs after %d consecutive transport failures",
+            cooldown,
+            threshold,
+        )
+
+
+def _record_success() -> None:
+    global _circuit_open_until, _consecutive_failures
+    _consecutive_failures = 0
+    _circuit_open_until = 0.0
 
 SYSTEM_PROMPT = """\
 You are a security classifier inside a payment authorization firewall.
@@ -155,8 +207,6 @@ def _coerce(payload: dict, model: str, latency_ms: int) -> ClassifierResult:
 
 
 async def classify(fields: dict[str, str]) -> ClassifierResult:
-    import time
-
     settings = get_settings()
     model = settings.openai_model
 
@@ -169,6 +219,9 @@ async def classify(fields: dict[str, str]) -> ClassifierResult:
     if not settings.openai_api_key:
         log.error("OPENAI_API_KEY is not set; classifier fails closed")
         return ClassifierResult.degraded_result("missing_api_key", model)
+    if _circuit_is_open():
+        # Breaker is open after repeated failures — skip the dead wait entirely.
+        return ClassifierResult.degraded_result("circuit_open", model)
 
     from openai import AsyncOpenAI
 
@@ -199,11 +252,16 @@ async def classify(fields: dict[str, str]) -> ClassifierResult:
         )
     except asyncio.TimeoutError:
         log.warning("classifier timed out after %.1fs", settings.openai_timeout_seconds)
+        _record_transport_failure()
         return ClassifierResult.degraded_result("timeout", model)
     except Exception as exc:
         log.warning("classifier call failed: %s: %s", type(exc).__name__, exc)
+        _record_transport_failure()
         return ClassifierResult.degraded_result(f"api_error:{type(exc).__name__}", model)
 
+    # The API answered. Parsing may still fail below, but that is a model
+    # problem, not an availability one, so the breaker closes here.
+    _record_success()
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     try:

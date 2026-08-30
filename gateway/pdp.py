@@ -71,6 +71,7 @@ def build_input(
     duplicate: DuplicateFinding,
     approval: ApprovalFinding,
     allow_degraded_classifier: bool = False,
+    degraded_classifier_requires_review: bool = False,
 ) -> dict:
     # Every amount OPA sees is an integer number of minor units (see
     # gateway.money). Rego then compares limits, spend and approval bindings as
@@ -85,6 +86,7 @@ def build_input(
             "approval_threshold": to_minor_units(ctx.approval_threshold),
             "spent_today": to_minor_units(ctx.spent_today),
             "allow_degraded_classifier": allow_degraded_classifier,
+            "degraded_classifier_requires_review": degraded_classifier_requires_review,
         }
     )
     return {
@@ -109,6 +111,10 @@ def build_input(
             "injection_confidence": analysis.injection_confidence,
             "injection_labels": analysis.injection_labels,
             "classifier_degraded": analysis.classifier_degraded,
+            # What the deterministic layers concluded on their own. Lets the
+            # policy distinguish "no classifier verdict AND no other evidence"
+            # from "no classifier verdict BUT the rules already flagged this".
+            "deterministic_confidence": analysis.deterministic_confidence,
             "source_trust_score": analysis.source_trust_score,
         },
         "risk": {

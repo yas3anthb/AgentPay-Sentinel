@@ -1,4 +1,4 @@
-.PHONY: help install keys opa test policy-test agent-install agent-test agent-demo lint up down logs demo demo-clean demo-injection dashboard reconcile clean relay-test web-install web-dev web-build web-gen-api
+.PHONY: help install keys opa test policy-test agent-install agent-test agent-demo lint up down logs demo demo-clean demo-injection dashboard reconcile bench smoke clean relay-test web-install web-dev web-build web-gen-api telegram-up telegram-down telegram-logs telegram-test
 
 VENV := .venv
 PY   := $(VENV)/bin/python
@@ -13,7 +13,7 @@ install: ## Create the venv and install dependencies
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 
-keys: ## Generate the static RS256 delegation keypair (dev only)
+keys: ## Generate the RS256 keypairs — delegation (control plane) + payment (gateway), dev only
 	$(PY) scripts/gen_keys.py
 
 opa: ## Fetch the OPA binary used for local policy tests
@@ -61,14 +61,14 @@ web-dev: ## Run the frontend against a locally-running stack
 web-build: ## Typecheck and production-build the frontend
 	cd apps/web && npx tsc --noEmit && npm run build
 
-up: ## Start the whole stack (web, gateway, OPA, Redis, Postgres, provider, agent, relay)
+up: ## Start the whole stack (web, gateway, control-plane, OPA, Redis, Postgres x2, provider, agent, relay)
 	docker compose up --build -d
-	@echo "web       http://localhost:3000        <- start here"
-	@echo "gateway   http://localhost:8080/docs"
-	@echo "agent     http://localhost:9200/docs"
-	@echo "relay     http://localhost:9300/readyz"
-	@echo "provider  http://localhost:9100/healthz"
-	@echo "dashboard http://localhost:8501        (legacy Streamlit)"
+	@echo "web            http://localhost:3000        <- start here"
+	@echo "gateway        http://localhost:8080/docs"
+	@echo "control-plane  http://localhost:8090/docs   (X-Admin-Key required)"
+	@echo "agent          http://localhost:9200/docs"
+	@echo "relay          http://localhost:9300/readyz"
+	@echo "provider       http://localhost:9100/healthz"
 
 down: ## Stop the stack and remove volumes
 	docker compose down -v
@@ -86,6 +86,25 @@ demo: demo-clean demo-injection ## Run both demos
 
 reconcile: ## Resolve UNKNOWN payments by querying the provider
 	curl -sS -X POST http://localhost:8080/v1/reconcile | python3 -m json.tool
+
+bench: ## Measure pipeline latency (p50/p95/p99, per stage) — writes docs/latency.md
+	$(PY) scripts/bench.py --n 60 --scenario both
+
+smoke: ## Fast green/red liveness check of every service (prove the stack is up)
+	@$(PY) scripts/smoke.py
+
+telegram-up: ## DEMO ONLY — start the Telegram bot (needs TELEGRAM_BOT_TOKEN in .env)
+	docker compose --profile telegram up --build -d telegram-bot
+	@echo "bot is polling. tail it with: make telegram-logs"
+
+telegram-down: ## Stop the Telegram bot
+	docker compose --profile telegram stop telegram-bot
+
+telegram-logs: ## Tail the Telegram bot logs
+	docker compose --profile telegram logs -f telegram-bot
+
+telegram-test: ## Run the Telegram bot's handler tests
+	cd apps/telegram-bot && ../../$(VENV)/bin/python -m pytest -q
 
 dashboard: ## Run the dashboard against a locally-running gateway
 	$(VENV)/bin/streamlit run dashboard/app.py

@@ -50,5 +50,8 @@ async def readyz() -> dict:
             "llm_mode": llm_mode,
             "fail_closed": not settings.allow_degraded_classifier,
             "deterministic_layers": ["rules", "similarity"],
+            # When the LLM layer is down and the deterministic layers are clean,
+            # route to human review instead of an outright decline.
+            "degraded_routes_to_review": settings.degraded_classifier_requires_review,
         },
     }

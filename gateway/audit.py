@@ -207,15 +207,7 @@ async def chain_head() -> dict:
     return {"events": count, "head_hash": head or GENESIS_HASH}
 
 
-def publish_checkpoint(head_hash: str) -> dict:
-    """Hook for anchoring the chain head in an independent append-only store
-    (a gist commit, a separate log service). Left unimplemented on purpose:
-    stubbing it out would be a stronger claim than the system actually earns."""
-    return {
-        "anchored": False,
-        "head_hash": head_hash,
-        "note": (
-            "No external anchor configured. Until the head is published to an "
-            "independent store, tampering requires compromising one system, not two."
-        ),
-    }
+# The chain head is anchored in an independent append-only store by
+# `gateway.checkpoint.anchor_checkpoint`, called from the audit-verify route.
+# Kept in a separate module because that store has its own engine and
+# credentials and must never share a transaction with this one.

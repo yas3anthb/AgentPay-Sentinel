@@ -11,10 +11,15 @@ const isServer = typeof window === "undefined";
 export const GATEWAY_ORIGIN = process.env.GATEWAY_ORIGIN ?? "http://localhost:8080";
 export const PROVIDER_ORIGIN = process.env.PROVIDER_ORIGIN ?? "http://localhost:9100";
 export const SIMULATOR_ORIGIN = process.env.SIMULATOR_ORIGIN ?? "http://localhost:9200";
+export const CONTROL_PLANE_ORIGIN =
+  process.env.CONTROL_PLANE_ORIGIN ?? "http://localhost:8090";
 
 export const GATEWAY_URL = isServer ? GATEWAY_ORIGIN : "/api/gateway";
 export const PROVIDER_ORIGIN_PROXY = isServer ? PROVIDER_ORIGIN : "/api/provider";
 export const SIMULATOR_URL = isServer ? SIMULATOR_ORIGIN : "/api/simulator";
+// The control plane is authenticated. The browser never holds the admin key —
+// it calls this same-origin proxy route, which injects X-Admin-Key server-side.
+export const CONTROL_URL = isServer ? CONTROL_PLANE_ORIGIN : "/api/control";
 
 /** WebSockets bypass CORS, so the relay is reached directly. */
 export const RELAY_WS_URL =

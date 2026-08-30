@@ -18,6 +18,13 @@ class Settings:
     provider_url: str = "http://localhost:9100"
     gateway_timeout_seconds: float = 45.0
 
+    # The control plane — a separate service. The simulator uses it once, to
+    # register the demo agent/policy and mint a delegation token, exactly as a
+    # human operator would. It is still an untrusted client; the admin key here
+    # is a dev convenience, not a capability the agent gets to keep.
+    control_plane_url: str = "http://localhost:8090"
+    admin_api_key: str = "dev-admin-key"
+
     # --- who this agent is ---
     user_id: str = "user_ada"
     agent_id: str = "agent_shopper_01"
@@ -49,6 +56,8 @@ def get_settings() -> Settings:
         gateway_url=os.getenv("GATEWAY_URL", "http://localhost:8080"),
         provider_url=os.getenv("PROVIDER_URL", "http://localhost:9100"),
         gateway_timeout_seconds=float(os.getenv("GATEWAY_TIMEOUT_SECONDS", "45")),
+        control_plane_url=os.getenv("CONTROL_PLANE_URL", "http://localhost:8090"),
+        admin_api_key=os.getenv("ADMIN_API_KEY", "dev-admin-key"),
         user_id=os.getenv("DEMO_USER_ID", "user_ada"),
         agent_id=os.getenv("DEMO_AGENT_ID", "agent_shopper_01"),
         delegation_id=os.getenv("DEMO_DELEGATION_ID", "del_office_supplies"),

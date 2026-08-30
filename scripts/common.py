@@ -9,6 +9,11 @@ import httpx
 
 GATEWAY = os.getenv("GATEWAY_URL", "http://localhost:8080")
 PROVIDER = os.getenv("PROVIDER_URL", "http://localhost:9100")
+# The control plane is a separate service: agent/policy/merchant registration,
+# delegation revocation and token minting all live here now, behind X-Admin-Key.
+CONTROL_PLANE = os.getenv("CONTROL_PLANE_URL", "http://localhost:8090")
+ADMIN_KEY = os.getenv("ADMIN_API_KEY", "dev-admin-key")
+ADMIN_HEADERS = {"X-Admin-Key": ADMIN_KEY, "X-Admin-Id": "demo-script"}
 
 USER = "user_ada"
 AGENT = "agent_shopper_01"
@@ -48,19 +53,22 @@ def banner(title: str, subtitle: str = "") -> None:
 
 
 def require_gateway() -> None:
-    try:
-        httpx.get(f"{GATEWAY}/healthz", timeout=3.0).raise_for_status()
-    except Exception as exc:
-        print(f"{RED}Gateway is not reachable at {GATEWAY}: {exc}{RESET}")
-        print("Start the stack first:  docker compose up --build")
-        sys.exit(1)
+    for name, url in (("Gateway", f"{GATEWAY}/healthz"), ("Control plane", f"{CONTROL_PLANE}/healthz")):
+        try:
+            httpx.get(url, timeout=3.0).raise_for_status()
+        except Exception as exc:
+            print(f"{RED}{name} is not reachable at {url}: {exc}{RESET}")
+            print("Start the stack first:  docker compose up --build")
+            sys.exit(1)
 
 
 def seed(client: httpx.Client) -> str:
     """Register the agent, the merchants, and the spending policy, then mint a
-    delegation token. This is control-plane work — none of it can move money."""
+    delegation token. This is control-plane work — a separate, authenticated
+    service — and none of it can move money."""
     client.put(
-        f"{GATEWAY}/v1/admin/agents",
+        f"{CONTROL_PLANE}/v1/admin/agents",
+        headers=ADMIN_HEADERS,
         json={
             "agent_id": AGENT,
             "owner_user_id": USER,
@@ -87,28 +95,32 @@ def seed(client: httpx.Client) -> str:
             "risk_score": 0.85,
         },
     ):
-        client.put(f"{GATEWAY}/v1/admin/merchants", json=merchant).raise_for_status()
+        client.put(
+            f"{CONTROL_PLANE}/v1/admin/merchants", headers=ADMIN_HEADERS, json=merchant
+        ).raise_for_status()
 
     client.put(
-        f"{GATEWAY}/v1/admin/policies",
+        f"{CONTROL_PLANE}/v1/admin/policies",
+        headers=ADMIN_HEADERS,
         json={
             "delegation_id": DELEGATION,
             "user_id": USER,
             "agent_id": AGENT,
             "policy_version": "v1.4.2",
-            "per_transaction_limit": "200.00",
-            "daily_limit": "500.00",
-            "currency": "USD",
+            "per_transaction_limit": "15000.00",
+            "daily_limit": "40000.00",
+            "currency": "INR",
             "allowed_merchants": [],
             "blocked_merchants": [],
             "require_verified_merchant": True,
-            "approval_threshold": "150.00",
+            "approval_threshold": "8000.00",
             "max_transactions_per_hour": 10,
         },
     ).raise_for_status()
 
     response = client.post(
-        f"{GATEWAY}/v1/admin/tokens",
+        f"{CONTROL_PLANE}/v1/admin/tokens",
+        headers=ADMIN_HEADERS,
         json={
             "agent_id": AGENT,
             "user_id": USER,
@@ -125,7 +137,9 @@ def reset_demo_state(client: httpx.Client) -> None:
     """Clear transactions, the audit chain and the replay caches so the demo is
     repeatable. The endpoint refuses to run outside dev."""
     try:
-        client.post(f"{GATEWAY}/v1/admin/dev/reset", timeout=15.0).raise_for_status()
+        client.post(
+            f"{CONTROL_PLANE}/v1/admin/dev/reset", headers=ADMIN_HEADERS, timeout=15.0
+        ).raise_for_status()
     except Exception as exc:
         print(f"{YELLOW}warning: could not reset gateway demo state: {exc}{RESET}")
 

@@ -33,7 +33,7 @@ class CartItemArgs(BaseModel):
     sku: Annotated[str, Field(min_length=1, max_length=128)]
     name: Annotated[str, Field(min_length=1, max_length=512)]
     quantity: Annotated[int, Field(gt=0, le=1000)]
-    unit_price: Annotated[str, Field(description="Decimal string, e.g. '21.25'. Never a float.")]
+    unit_price: Annotated[str, Field(description="Decimal string, e.g. '1250.00'. Never a float.")]
 
 
 class PaymentIntentArgs(BaseModel):
@@ -45,8 +45,8 @@ class PaymentIntentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     merchant_id: Annotated[str, Field(description="Merchant identifier from the catalog.")]
-    amount: Annotated[str, Field(description="Total as a decimal string, e.g. '42.50'.")]
-    currency: Annotated[str, Field(min_length=3, max_length=3, description="ISO code, e.g. USD.")]
+    amount: Annotated[str, Field(description="Total as a decimal string, e.g. '2500.00'.")]
+    currency: Annotated[str, Field(min_length=3, max_length=3, description="ISO code, e.g. INR.")]
     items: Annotated[list[CartItemArgs], Field(min_length=1)]
     purpose: Annotated[str, Field(default="", max_length=2000)] = ""
     merchant_content: Annotated[
@@ -95,15 +95,20 @@ class SentinelClient:
 
     # --- control-plane setup (dev convenience) ---------------------------
 
+    def _admin_headers(self) -> dict[str, str]:
+        return {"X-Admin-Key": self.settings.admin_api_key, "X-Admin-Id": "agent-simulator"}
+
     def seed(self) -> None:
         """Register the demo agent, merchants and spending policy.
 
         This is control-plane work that a human would do once in a real
-        deployment. It is here so the simulator is self-contained; it cannot
-        authorize anything.
+        deployment. It goes to the separate, authenticated control-plane
+        service; the simulator cannot authorize anything.
         """
         s = self.settings
-        with httpx.Client(base_url=s.gateway_url, timeout=15.0) as client:
+        with httpx.Client(
+            base_url=s.control_plane_url, timeout=15.0, headers=self._admin_headers()
+        ) as client:
             client.put(
                 "/v1/admin/agents",
                 json={
@@ -146,13 +151,13 @@ class SentinelClient:
                     "user_id": s.user_id,
                     "agent_id": s.agent_id,
                     "policy_version": "v1.4.2",
-                    "per_transaction_limit": "200.00",
-                    "daily_limit": "500.00",
-                    "currency": "USD",
+                    "per_transaction_limit": "15000.00",
+                    "daily_limit": "40000.00",
+                    "currency": "INR",
                     "allowed_merchants": [],
                     "blocked_merchants": [],
                     "require_verified_merchant": True,
-                    "approval_threshold": "150.00",
+                    "approval_threshold": "8000.00",
                     "max_transactions_per_hour": 20,
                 },
             ).raise_for_status()
@@ -161,7 +166,9 @@ class SentinelClient:
         if self._token and not refresh:
             return self._token
         s = self.settings
-        with httpx.Client(base_url=s.gateway_url, timeout=15.0) as client:
+        with httpx.Client(
+            base_url=s.control_plane_url, timeout=15.0, headers=self._admin_headers()
+        ) as client:
             response = client.post(
                 "/v1/admin/tokens",
                 json={
@@ -178,7 +185,12 @@ class SentinelClient:
 
     # --- the money path ---------------------------------------------------
 
-    def submit(self, args: PaymentIntentArgs, idempotency_key: str | None = None) -> dict:
+    def submit(
+        self,
+        args: PaymentIntentArgs,
+        idempotency_key: str | None = None,
+        correlation_id: str | None = None,
+    ) -> dict:
         s = self.settings
         payload = {
             "idempotency_key": idempotency_key or f"crew-{uuid.uuid4().hex[:16]}",
@@ -209,15 +221,20 @@ class SentinelClient:
         if args.approval_token:
             payload["approval_token"] = args.approval_token
 
+        headers = {"Authorization": f"Bearer {self.token()}"}
+        if correlation_id:
+            # The gateway keys its live pipeline stream on this header, so a
+            # caller that set it before the run can watch exactly this request
+            # instead of the unfiltered firehose. It also lands in the audit
+            # payload, making the record per-run addressable.
+            headers["X-Request-Id"] = correlation_id[:128]
+
         with httpx.Client(base_url=s.gateway_url, timeout=s.gateway_timeout_seconds) as client:
-            response = client.post(
-                "/v1/payment-intents",
-                json=payload,
-                headers={"Authorization": f"Bearer {self.token()}"},
-            )
+            response = client.post("/v1/payment-intents", json=payload, headers=headers)
         body = response.json()
         body["_http_status"] = response.status_code
         body["_idempotency_key"] = payload["idempotency_key"]
+        body["_correlation_id"] = correlation_id
         return body
 
     def grant_approval(self, approval_request_id: str) -> dict:
@@ -242,7 +259,11 @@ class SentinelClient:
 
 
 def build_sentinel_tool(
-    client: SentinelClient, transcript: Transcript, *, idempotency_key: str | None = None
+    client: SentinelClient,
+    transcript: Transcript,
+    *,
+    idempotency_key: str | None = None,
+    correlation_id: str | None = None,
 ) -> StructuredTool:
     """The LangChain tool the agent actually calls."""
 
@@ -261,13 +282,16 @@ def build_sentinel_tool(
                 "purpose": args.purpose,
                 "merchant_content_chars": len(args.merchant_content),
                 "merchant_source_type": args.merchant_source_type,
+                "correlation_id": correlation_id,
             },
             simulated=False,
         )
 
         started = time.perf_counter()
         try:
-            decision = client.submit(args, idempotency_key=idempotency_key)
+            decision = client.submit(
+                args, idempotency_key=idempotency_key, correlation_id=correlation_id
+            )
         except httpx.HTTPError as exc:
             transcript.add(
                 StepKind.ERROR,

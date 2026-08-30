@@ -49,7 +49,7 @@ def main() -> int:
         kv("user", USER)
         kv("agent", AGENT)
         kv("delegation", DELEGATION)
-        kv("policy", "per-txn $200 · daily $500 · approval over $150 · verified merchants only")
+        kv("policy", "per-txn ₹15,000 · daily ₹40,000 · approval over ₹8,000 · verified merchants only")
         kv("provider calls so far", provider_calls(client))
 
         step(2, "The agent submits a typed PaymentIntent with the merchant's page content")
@@ -60,11 +60,11 @@ def main() -> int:
             "delegation_id": DELEGATION,
             "merchant_id": "merch_beanery",
             "merchant_verified": True,
-            "amount": "42.50",
-            "currency": "USD",
+            "amount": "2500.00",
+            "currency": "INR",
             "items": [
                 {"sku": "BEAN-ETH-1KG", "name": "Ethiopian whole bean 1kg",
-                 "quantity": 2, "unit_price": "21.25"},
+                 "quantity": 2, "unit_price": "1250.00"},
             ],
             "purpose": "Monthly coffee restock for the office kitchen",
             "merchant_content": {
@@ -78,7 +78,7 @@ def main() -> int:
             "tool_arguments": {"cart_id": "cart_9931", "shipping": "standard"},
         }
         kv("merchant", "merch_beanery (verified, grocery)")
-        kv("amount", "42.50 USD")
+        kv("amount", "2500.00 INR")
         kv("content source", "official_api  → high trust")
 
         response = client.post(

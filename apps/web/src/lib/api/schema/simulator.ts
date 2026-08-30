@@ -194,7 +194,7 @@ export interface components {
         SimulationRequest: {
             /**
              * Instruction
-             * @default Restock the office kitchen with coffee, keep it under $100.
+             * @default Restock the office kitchen with coffee, keep it under ₹5000.
              */
             instruction: string;
             /**
@@ -204,6 +204,8 @@ export interface components {
             budget: string;
             /** Quantity */
             quantity?: number | null;
+            /** Correlation Id */
+            correlation_id?: string | null;
         };
         /** ValidationError */
         ValidationError: {

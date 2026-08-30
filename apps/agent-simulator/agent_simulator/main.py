@@ -57,11 +57,15 @@ class SimulationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     instruction: str = Field(
-        default="Restock the office kitchen with coffee, keep it under $100.",
+        default="Restock the office kitchen with coffee, keep it under ₹5000.",
         max_length=2000,
     )
     budget: str = "100.00"
     quantity: int | None = Field(default=None, ge=1, le=50)
+    # A caller that wants to follow this run's gateway pipeline live passes its
+    # own id; every gateway call the run makes echoes it as X-Request-Id. Left
+    # unset, the service generates one and returns it as `request_id`.
+    correlation_id: str | None = Field(default=None, max_length=128)
 
 
 @app.exception_handler(SimulatorError)
@@ -118,6 +122,7 @@ def clean_purchase(body: SimulationRequest) -> dict:
         budget=body.budget,
         adversarial=False,
         quantity=body.quantity,
+        correlation_id=body.correlation_id,
     )
     return run.summary()
 
@@ -137,6 +142,7 @@ def adversarial(body: SimulationRequest) -> dict:
         budget=body.budget,
         adversarial=True,
         quantity=body.quantity,
+        correlation_id=body.correlation_id,
     )
     summary = run.summary()
     summary["injection"] = {
@@ -159,8 +165,9 @@ def approval_flow(body: SimulationRequest) -> dict:
         instruction=body.instruction,
         budget=body.budget,
         adversarial=False,
-        # 8 x $21.25 = $170, over the demo policy's $150 approval threshold.
+        # 8 x ₹1,250 = ₹10,000, over the demo policy's ₹8,000 approval threshold.
         quantity=body.quantity or 8,
+        correlation_id=body.correlation_id,
     )
     return run.summary()
 
