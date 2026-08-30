@@ -43,8 +43,9 @@ decision is never an implicit yes.
 
 ```bash
 cp .env.example .env         # add OPENAI_API_KEY, or see "Running without a key" below
-make up                      # web + gateway + control plane + OPA + Redis + Postgres ×2 + provider + agent
+make up                      # web + gateway + control plane + OPA + Redis + Postgres ×2 + provider + agent + relay
 make demo                    # runs both demos
+make smoke                   # green/red liveness check of every service
 ```
 
 | Service | URL |
@@ -56,6 +57,9 @@ make demo                    # runs both demos
 | Event relay | http://localhost:9300/readyz |
 | Mock provider | http://localhost:9100/healthz |
 | OPA | http://localhost:8181 |
+
+The Telegram bot is opt-in and off by default: `make telegram-up` (needs
+`TELEGRAM_BOT_TOKEN` in `.env`). See [Telegram](#telegram-demo-only) below.
 
 ## The frontend
 
@@ -109,6 +113,28 @@ has a test that walks the real object graph:
 It runs in its own image and venv: CrewAI's tree pins pydantic 2.12 and
 openai 2.x against this gateway's 2.10.4 and 1.59.6. See
 [`apps/agent-simulator/README.md`](apps/agent-simulator/README.md).
+
+## Telegram (demo only)
+
+`apps/telegram-bot/` is a Telegram client of the same APIs the web console
+uses — nothing more. It **decides nothing**: it asks the agent to shop, shows
+the cart, relays Sentinel's verdict, and on a `REQUIRE_APPROVAL` offers
+Approve / Deny buttons that call the real grant endpoint. A poisoned cart is
+blocked before any button appears; the bot inherits every protection because it
+re-uses the pipeline rather than reimplementing it.
+
+Linking is a one-time code: the web **Telegram** tab issues `LINK-XXXXXX`
+(10-minute, single-use), the user sends it to the bot, and the control plane
+binds `telegram_id → user_id`. The bot holds a Telegram token and the admin key
+for the link endpoints only — no payment credential.
+
+```bash
+# .env: TELEGRAM_BOT_TOKEN=<from @BotFather>   TELEGRAM_BOT_USERNAME=<name>
+make telegram-up        # opt-in compose profile, long-polling, no public URL
+make telegram-logs
+```
+
+Full plan and endpoint list: [`docs/telegram-integration.md`](docs/telegram-integration.md).
 
 ## The two demos
 
@@ -403,9 +429,12 @@ See [`docs/availability.md`](docs/availability.md) for the full dependency/failu
 ## Running without an OpenAI key
 
 The default `.env.example` runs the classifier **live**: add `OPENAI_API_KEY` and go. Without
-a key the LLM layer is unavailable and the policy fails closed — **every** transaction is
-blocked with `CLASSIFIER_UNAVAILABLE_FAIL_CLOSED`. That is the system working correctly, but
-it makes for a short demo. For an offline run:
+a key the LLM layer is unavailable. With graceful degradation on (the default, §3) a cart the
+deterministic layers find clean routes to `REQUIRE_APPROVAL`
+(`CLASSIFIER_UNAVAILABLE_HUMAN_REVIEW`); one that they flag is still blocked. Set
+`DEGRADED_CLASSIFIER_REQUIRES_REVIEW=false` for the older unconditional
+`CLASSIFIER_UNAVAILABLE_FAIL_CLOSED` on everything. Either way it makes for a short demo. For
+an offline run that still ALLOWs the clean path:
 
 ```bash
 # .env
@@ -424,10 +453,11 @@ real.
 ## Testing
 
 ```bash
-make test          # 129 gateway tests + 32 Rego policy tests
+make test          # 134 gateway tests + 32 Rego policy tests
 make policy-test   # just the Rego
 make agent-test    # agent-simulator tests (separate venv)
 make relay-test    # event-relay tests
+make telegram-test # Telegram bot handler tests
 make web-build     # frontend typecheck + production build
 make smoke         # fast green/red liveness check of every running service
 make bench         # measured p50/p95/p99 per stage -> docs/latency.md
@@ -465,8 +495,9 @@ Worth reading, if you only read a few:
 
 **Control plane** (separate service, port 8090, every mutating call needs `X-Admin-Key`) —
 `PUT /v1/admin/{agents,policies,merchants}`, `POST /v1/admin/delegations/{id}/{revoke,reinstate}`,
-`POST /v1/admin/tokens`, `GET /v1/admin/audit/admin`. None of it can move money, and the
-gateway can no longer do any of it.
+`POST /v1/admin/tokens`, `GET /v1/admin/audit/admin`, and the Telegram link endpoints
+`POST /v1/admin/telegram/{link-code,link}` · `GET /v1/admin/telegram/whoami/{id}`. None of it
+can move money, and the gateway can no longer do any of it.
 
 ## Reason codes
 
@@ -543,5 +574,9 @@ apps/
   event-relay/     read-only WebSocket fan-out for pipeline stage events
   telegram-bot/    DEMO ONLY: a Telegram client of the same APIs the web uses;
                    opt-in compose profile, decides nothing (docs/telegram-integration.md)
-  web/             Next.js product frontend — the only UI
+  web/             Next.js product frontend — the only UI, with a Telegram
+                   link tab and a server-side admin proxy
 ```
+
+Amounts in the demo are INR; the ratios are unchanged from the earlier USD
+figures, so every ALLOW / BLOCK / REQUIRE_APPROVAL outcome is the same.
