@@ -181,7 +181,7 @@ def test_shopper_toolset_contains_exactly_the_declared_tools(toolset):
     from crewai import LLM
 
     settings = Settings()
-    llm = LLM(model="gpt-4o-mini", api_key="sk-not-used-in-this-test")
+    llm = LLM(model="groq/openai/gpt-oss-120b", api_key="gsk-not-used-in-this-test")
     shopper, reviewer = build_agents(settings, llm, storefront, payment, transcript)
 
     assert sorted(t.name for t in shopper.tools) == [

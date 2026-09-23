@@ -317,7 +317,7 @@ def _render(results: list[dict]) -> str:
                 "",
                 f"> **{degraded}/{total} ({100 * degraded / total:.0f}%) fell back to "
                 "`CLASSIFIER_UNAVAILABLE_FAIL_CLOSED`** — the LLM classifier exceeded "
-                "`openai_timeout_seconds` and the policy denied, as designed. The "
+                "`groq_timeout_seconds` and the policy denied, as designed. The "
                 "deterministic layers still ran. This is the real false-decline cost of "
                 "fail-closed under load, and it is why the timeout and the circuit "
                 "breaker are tuned rather than left at defaults.",

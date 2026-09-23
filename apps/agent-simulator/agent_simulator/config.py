@@ -34,8 +34,10 @@ class Settings:
     # A separate key from the gateway's classifier by default. They may share a
     # value, but they are configured independently so a key problem in one is
     # never silently absorbed by the other.
-    agent_openai_api_key: str = ""
-    agent_model: str = "gpt-4o-mini"
+    agent_groq_api_key: str = ""
+    # CrewAI routes through LiteLLM, so the provider prefix is part of the
+    # model id: "groq/<model>".
+    agent_model: str = "groq/openai/gpt-oss-120b"
     agent_temperature: float = 0.0
     agent_timeout_seconds: float = 60.0
     agent_max_iterations: int = 6
@@ -61,10 +63,10 @@ def get_settings() -> Settings:
         user_id=os.getenv("DEMO_USER_ID", "user_ada"),
         agent_id=os.getenv("DEMO_AGENT_ID", "agent_shopper_01"),
         delegation_id=os.getenv("DEMO_DELEGATION_ID", "del_office_supplies"),
-        agent_openai_api_key=(
-            os.getenv("AGENT_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
+        agent_groq_api_key=(
+            os.getenv("AGENT_GROQ_API_KEY") or os.getenv("GROQ_API_KEY") or ""
         ),
-        agent_model=os.getenv("AGENT_MODEL", "gpt-4o-mini"),
+        agent_model=os.getenv("AGENT_MODEL", "groq/openai/gpt-oss-120b"),
         agent_temperature=float(os.getenv("AGENT_TEMPERATURE", "0")),
         agent_timeout_seconds=float(os.getenv("AGENT_TIMEOUT_SECONDS", "60")),
         agent_max_iterations=int(os.getenv("AGENT_MAX_ITERATIONS", "6")),

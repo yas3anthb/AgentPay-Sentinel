@@ -2,7 +2,7 @@
 
 Deliberately its own client, configured independently of the gateway's
 classifier. They may share an API key value, but nothing is shared at runtime:
-the gateway runs in a different process with its own OpenAI client, so a key
+the gateway runs in a different process with its own Groq client, so a key
 problem on one side surfaces on that side rather than being absorbed silently
 by the other.
 
@@ -26,11 +26,11 @@ def build_crew_llm(settings: Settings):
             "offline mode does not build an LLM; the deterministic path is used instead",
         )
 
-    if not settings.agent_openai_api_key:
+    if not settings.agent_groq_api_key:
         raise SimulatorError(
             "AGENT_LLM_KEY_MISSING",
             (
-                "No AGENT_OPENAI_API_KEY (or OPENAI_API_KEY) is set, so the crew "
+                "No AGENT_GROQ_API_KEY (or GROQ_API_KEY) is set, so the crew "
                 "cannot run. This is a hard error on purpose: the simulator will "
                 "not return an invented transcript. Set a key, or run with "
                 "AGENT_LLM_MODE=offline for the clearly-labelled deterministic path."
@@ -41,7 +41,7 @@ def build_crew_llm(settings: Settings):
 
     return LLM(
         model=settings.agent_model,
-        api_key=settings.agent_openai_api_key,
+        api_key=settings.agent_groq_api_key,
         temperature=settings.agent_temperature,
         timeout=settings.agent_timeout_seconds,
     )

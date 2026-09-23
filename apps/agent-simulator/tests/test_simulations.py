@@ -175,7 +175,7 @@ def test_live_mode_without_a_key_fails_closed(client, monkeypatch):
     from agent_simulator.config import Settings, SimulatorError
     from agent_simulator.llm import build_crew_llm
 
-    settings = Settings(llm_mode="live", agent_openai_api_key="")
+    settings = Settings(llm_mode="live", agent_groq_api_key="")
     with pytest.raises(SimulatorError) as exc:
         build_crew_llm(settings)
     assert exc.value.code == "AGENT_LLM_KEY_MISSING"

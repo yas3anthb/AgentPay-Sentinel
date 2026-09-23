@@ -148,8 +148,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       OPA_URL: http://opa:8181
       PROVIDER_URL: http://provider:9100
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
       ALLOW_DEGRADED_CLASSIFIER: ${ALLOW_DEGRADED_CLASSIFIER:-false}
       CLASSIFIER_OFFLINE: ${CLASSIFIER_OFFLINE:-false}
       # The gateway holds the delegation PUBLIC key only — it verifies inbound
@@ -207,7 +207,7 @@ services:
 
   # The AI agent: a CrewAI crew orchestrated by LangGraph whose only
   # money-moving tool is the Sentinel gateway. Runs in its own image because
-  # its framework tree pins pydantic/openai versions the gateway cannot use.
+  # its framework tree pins pydantic/LiteLLM versions the gateway cannot use.
   agent-simulator:
     build:
       context: .
@@ -218,8 +218,8 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
       PROVIDER_URL: http://provider:9100
       AGENT_LLM_MODE: ${AGENT_LLM_MODE:-live}
-      AGENT_OPENAI_API_KEY: ${AGENT_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}
-      AGENT_MODEL: ${AGENT_MODEL:-gpt-4o-mini}
+      AGENT_GROQ_API_KEY: ${AGENT_GROQ_API_KEY:-${GROQ_API_KEY:-}}
+      AGENT_MODEL: ${AGENT_MODEL:-groq/openai/gpt-oss-120b}
       CREW_VERBOSE: ${CREW_VERBOSE:-false}
     ports:
       - "9200:9200"

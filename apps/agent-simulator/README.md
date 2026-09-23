@@ -128,8 +128,8 @@ A failed live run returns HTTP 502 with an error code and no transcript at all:
 | `GATEWAY_URL` | `http://localhost:8080` | the Sentinel gateway |
 | `PROVIDER_URL` | `http://localhost:9100` | mock provider, read-only (call counter) |
 | `AGENT_LLM_MODE` | `live` | `live` or `offline` |
-| `AGENT_OPENAI_API_KEY` | falls back to `OPENAI_API_KEY` | the crew's key |
-| `AGENT_MODEL` | `gpt-4o-mini` | |
+| `AGENT_GROQ_API_KEY` | falls back to `GROQ_API_KEY` | the crew's key |
+| `AGENT_MODEL` | `groq/openai/gpt-oss-120b` | LiteLLM id, so the `groq/` prefix is part of it |
 | `AGENT_MAX_ITERATIONS` | `6` | crew iteration cap |
 | `CREW_VERBOSE` | `false` | CrewAI's own console output |
 
@@ -147,10 +147,11 @@ and resetting is honest where disabling them would not be.
 
 ## Why a separate venv and image
 
-CrewAI's dependency tree pins **pydantic 2.12** and **openai 2.x**; the gateway
-pins pydantic 2.10.4 and openai 1.59.6. Installing both in one environment
-would silently upgrade the gateway's dependencies out from under its test
-suite. The two services never share an environment or an image.
+CrewAI's dependency tree pins **pydantic 2.12** and drags in its own LiteLLM
+stack; the gateway pins pydantic 2.10.4 and talks to Groq directly through the
+`groq` SDK. Installing both in one environment would silently upgrade the
+gateway's dependencies out from under its test suite. The two services never
+share an environment or an image.
 
 ## Known rough edges
 

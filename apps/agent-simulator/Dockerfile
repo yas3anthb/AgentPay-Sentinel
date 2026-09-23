@@ -1,6 +1,6 @@
 # Its own image, for the same reason it has its own requirements file: the
 # agent frameworks and the gateway pin incompatible versions of pydantic and
-# the OpenAI SDK.
+# of their LLM client stacks (CrewAI/LiteLLM here, the `groq` SDK there).
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \

@@ -45,8 +45,19 @@ def canonical_timestamp(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
+def _stable(value: Any) -> Any:
+    """`json.dumps(default=...)` fallback. Only reached for types the JSON
+    encoder cannot handle natively. A `set` here would serialise in an
+    arbitrary order and make the chain fail its own re-verification, so it is
+    refused outright rather than silently `str()`-ed — every audit payload must
+    be built from JSON-native types."""
+    if isinstance(value, (set, frozenset)):
+        raise TypeError("audit payload contains a set; use a sorted list")
+    return str(value)
+
+
 def _canonical(payload: dict[str, Any]) -> str:
-    return json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True, default=_stable)
 
 
 def compute_hash(event_body: dict[str, Any], prev_hash: str) -> str:

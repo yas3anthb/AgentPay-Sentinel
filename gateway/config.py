@@ -57,20 +57,27 @@ class Settings(BaseSettings):
     opa_decision_path: str = "agentpay/decision/result"
     provider_url: str = "http://localhost:9100"
 
-    # --- OpenAI classifier ---
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    # --- Groq classifier ---
+    groq_api_key: str = ""
+    # Default is a Groq-hosted model that supports strict json_schema
+    # structured outputs, so the classifier's response contract is enforced by
+    # the API rather than hoped for in the prompt.
+    groq_model: str = "openai/gpt-oss-120b"
+    # Reasoning models on Groq accept an effort level. "low" keeps the hidden
+    # reasoning short, which matters because the timeout below is tight. Set to
+    # "" to omit the parameter entirely (for models that do not accept it).
+    groq_reasoning_effort: str = "low"
     # Tight on purpose: the deterministic rule + similarity layers are the floor,
     # so a slow classifier should degrade fast rather than hold up a payment.
-    openai_timeout_seconds: float = 4.0
+    groq_timeout_seconds: float = 4.0
     # Fail-closed: if the classifier errors or times out we emit a BLOCK-grade
     # signal rather than waving the transaction through.
     classifier_fail_closed: bool = True
     # Set true to skip the network call entirely (offline demos / CI).
     classifier_offline: bool = False
     # Circuit breaker (see gateway/analyzer/llm.py): after this many consecutive
-    # transport failures the classifier call is skipped for the cooldown, so an
-    # OpenAI outage stops costing every request a full timeout.
+    # transport failures the classifier call is skipped for the cooldown, so a
+    # Groq outage stops costing every request a full timeout.
     classifier_circuit_failures: int = 4
     classifier_circuit_cooldown_seconds: float = 30.0
     # DEV ONLY. Lets the PDP proceed when the classifier is unavailable instead

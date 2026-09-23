@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 # Never inherit the developer's .env — tests must be hermetic.
 os.environ["AGENTPAY_ENV_FILE"] = str(ROOT / "tests" / ".env.absent")
 
-# Tests never touch a real Postgres, Redis, OPA, or the OpenAI API.
+# Tests never touch a real Postgres, Redis, OPA, or the Groq API.
 os.environ.setdefault("ALLOW_DEGRADED_CLASSIFIER", "false")
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")

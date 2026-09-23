@@ -179,10 +179,16 @@ async def create_payment_intent(
     )
 
     # Everything from the duplicate check through token issuance is one
-    # critical section, keyed on the user's idempotency key.
+    # critical section. Two locks: the idempotency key (a retry of *this*
+    # request) and the transaction fingerprint (a different key for the *same*
+    # cart in the same window). Without the second lock, two requests with
+    # different idempotency keys for one cart could each pass the fingerprint
+    # check before either reserved it — a double-charge race. Lock order is
+    # fixed (idem then fingerprint) so it cannot deadlock.
     lock_key = f"idem:{txn.user_id}:{txn.idempotency_key}"
+    fp_lock_key = f"fp:{txn.user_id}:{txn.fingerprint}"
     try:
-        async with DistributedLock(lock_key):
+        async with DistributedLock(lock_key), DistributedLock(fp_lock_key, ttl=15):
             return await _run_pipeline(txn, identity, execute=execute, emitter=emitter)
     except TimeoutError:
         # Another request holds the lock for this exact key. Refusing is

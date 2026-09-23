@@ -1,16 +1,19 @@
 # Agent-simulator dependencies.
 #
 # Deliberately a SEPARATE environment from the gateway's requirements.txt.
-# CrewAI's tree pulls pydantic 2.12 and openai 2.x, while the gateway is pinned
-# to pydantic 2.10.4 and openai 1.59.6. Installing both in one venv would
-# silently upgrade the gateway's dependencies out from under its 92 tests, so
-# the two services never share an environment or an image.
+# CrewAI's tree pulls pydantic 2.12 and its own litellm/openai stack, while the
+# gateway is pinned to pydantic 2.10.4 and the Groq SDK. Installing both in one
+# venv would silently upgrade the gateway's dependencies out from under its 92
+# tests, so the two services never share an environment or an image.
 
 # --- agent frameworks ---
-crewai==1.15.18
+# The [litellm] extra is what gives CrewAI its Groq provider: crewai 1.15's
+# native provider list has no Groq entry, so a `groq/...` model id only
+# resolves once LiteLLM is present.
+crewai[litellm]==1.15.18
+litellm==1.102.1
 langchain==1.3.18
 langchain-core==1.6.1
-langchain-openai==1.6.0
 langgraph==1.2.11
 
 # --- service ---

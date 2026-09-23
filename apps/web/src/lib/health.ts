@@ -115,7 +115,7 @@ function classifierMode(
 ): StackHealth["classifierMode"] {
   /*
    * /readyz now reports the CONFIGURED classifier mode (not a live probe — a
-   * healthcheck must not spend an OpenAI call). The per-transaction truth still
+   * healthcheck must not spend a Groq call). The per-transaction truth still
    * lives in each decision's risk.signals.classifier_degraded, because a "live"
    * config can still degrade on a single call that times out. So this strip
    * states the configuration and points at the per-run signal for the rest.

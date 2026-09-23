@@ -60,6 +60,9 @@ minted token), and a timestamp. Append-only. Read it with `GET /v1/admin/audit/a
   env; the helpers attach the header.
 - **Web** — the browser calls the same-origin `/api/control/*` proxy route,
   which injects `X-Admin-Key` from the server's environment. The key is never in
-  a page bundle.
+  a page bundle. **Caveat:** that route forwards *any* path the browser asks
+  for, and the demo console has no login — so it is a confused deputy. Fine on
+  localhost (trusted tool); if `:3000` is exposed it must sit behind auth, or
+  the proxy must be narrowed to the read-only + link-code endpoints.
 - **Tests** — `tests/test_control_plane.py` drives it directly;
   `tests/test_pipeline.py` seeds through it with a test admin key.

@@ -13,7 +13,7 @@ deny contains "PROMPT_INJECTION_HIGH_CONFIDENCE" if {
 # The original rule was: no classifier verdict -> BLOCK, always. That is the
 # safe default and it is still the default here. But measurement changed the
 # picture: `docs/latency.md` shows a small but real fraction of live requests
-# where the OpenAI call exceeds its timeout. Under an unconditional block,
+# where the Groq call exceeds its timeout. Under an unconditional block,
 # every one of those is a DECLINED PAYMENT for a customer who did nothing
 # wrong, and during a provider outage that is *every* payment.
 #

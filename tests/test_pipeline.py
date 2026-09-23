@@ -376,7 +376,7 @@ def test_classifier_outage_on_clean_content_routes_to_human_not_a_decline(client
     from gateway.analyzer import llm
 
     async def dead(fields):
-        return llm.ClassifierResult.degraded_result("timeout", "gpt-4o-mini")
+        return llm.ClassifierResult.degraded_result("timeout", "openai/gpt-oss-120b")
 
     monkeypatch.setattr(llm, "classify", dead)
     body = post(client, intent()).json()
@@ -391,7 +391,7 @@ def test_classifier_outage_with_a_deterministic_hit_still_blocks(client, monkeyp
     from gateway.analyzer import llm
 
     async def dead(fields):
-        return llm.ClassifierResult.degraded_result("timeout", "gpt-4o-mini")
+        return llm.ClassifierResult.degraded_result("timeout", "openai/gpt-oss-120b")
 
     monkeypatch.setattr(llm, "classify", dead)
     body = post(
@@ -419,7 +419,7 @@ def test_graceful_degradation_can_be_switched_off(client, monkeypatch):
     from gateway.analyzer import llm
 
     async def dead(fields):
-        return llm.ClassifierResult.degraded_result("timeout", "gpt-4o-mini")
+        return llm.ClassifierResult.degraded_result("timeout", "openai/gpt-oss-120b")
 
     monkeypatch.setattr(llm, "classify", dead)
     body = post(client, intent()).json()

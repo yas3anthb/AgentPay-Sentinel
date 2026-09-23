@@ -32,12 +32,12 @@ async def readyz() -> dict:
     ready = all(v == "ok" for v in checks.values())
 
     # Configured classifier mode — NOT a live probe (a healthcheck should not
-    # spend an OpenAI call). The per-transaction truth still lives in each
+    # spend a Groq call). The per-transaction truth still lives in each
     # decision's risk.signals.classifier_degraded: a "live" config can still
     # degrade on a single call that times out.
     if settings.classifier_offline:
         llm_mode = "offline"
-    elif not settings.openai_api_key:
+    elif not settings.groq_api_key:
         llm_mode = "unconfigured"
     else:
         llm_mode = "live"

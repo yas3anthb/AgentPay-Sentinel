@@ -36,7 +36,7 @@ says so — permanently, not in a tooltip.
   code and message with an explicit note that no run happened. The console
   never synthesizes a transcript to fill the screen.
 - **Timing is measured, not scripted.** The 3D scene is driven by stage events
-  the gateway publishes at each real stage boundary. If the OpenAI classifier
+  the gateway publishes at each real stage boundary. If the Groq classifier
   takes 400ms, the visualisation waits 400ms.
 - **The classifier mode is not guessed.** The gateway does not publish it on
   `/readyz`, so the Overview strip says exactly that instead of inventing a

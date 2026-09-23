@@ -70,7 +70,7 @@ def _txn(text: str, source: SourceType = SourceType.SCRAPED_PAGE) -> CanonicalTr
 
 @pytest.fixture
 def stub_classifier(monkeypatch):
-    """Stand-in for the OpenAI call: keyword-driven, deterministic."""
+    """Stand-in for the Groq call: keyword-driven, deterministic."""
 
     async def fake(fields: dict[str, str]) -> llm.ClassifierResult:
         blob = " ".join(fields.values()).lower()
@@ -126,7 +126,7 @@ async def test_purpose_field_is_classified_like_merchant_content(stub_classifier
 
 async def test_classifier_failure_is_degraded_not_clean(monkeypatch):
     async def boom(fields):
-        return llm.ClassifierResult.degraded_result("timeout", "gpt-4o-mini")
+        return llm.ClassifierResult.degraded_result("timeout", "openai/gpt-oss-120b")
 
     monkeypatch.setattr(llm, "classify", boom)
     result = await analyze(_txn("Single-origin coffee, 1kg."))

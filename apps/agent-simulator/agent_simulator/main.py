@@ -83,7 +83,7 @@ def healthz() -> dict:
         "status": "ok",
         "llm_mode": settings.llm_mode,
         "agent_model": settings.agent_model,
-        "agent_key_configured": bool(settings.agent_openai_api_key),
+        "agent_key_configured": bool(settings.agent_groq_api_key),
     }
 
 
@@ -99,11 +99,11 @@ def readyz() -> dict:
 
     if settings.offline():
         checks["llm"] = "offline-deterministic (agent reasoning is scripted)"
-    elif settings.agent_openai_api_key:
+    elif settings.agent_groq_api_key:
         checks["llm"] = "live"
     else:
         # Say so up front rather than at the first simulate call.
-        checks["llm"] = "error: no AGENT_OPENAI_API_KEY; live runs will fail closed"
+        checks["llm"] = "error: no AGENT_GROQ_API_KEY; live runs will fail closed"
 
     return {
         "ready": all(not v.startswith("error") for v in checks.values()),

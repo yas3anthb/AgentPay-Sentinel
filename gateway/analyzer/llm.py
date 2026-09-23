@@ -1,4 +1,4 @@
-"""Stage 3b — LLM injection classifier (OpenAI).
+"""Stage 3b — LLM injection classifier (Groq).
 
 Two properties matter more than the model choice:
 
@@ -28,8 +28,8 @@ log = logging.getLogger("agentpay.analyzer.llm")
 
 # --- circuit breaker ------------------------------------------------------
 #
-# During an OpenAI outage, every request would otherwise pay the full timeout
-# (config `openai_timeout_seconds`) before falling back to the deterministic
+# During a Groq outage, every request would otherwise pay the full timeout
+# (config `groq_timeout_seconds`) before falling back to the deterministic
 # layers. After `classifier_circuit_failures` consecutive transport failures
 # the breaker opens: the network call is skipped entirely for
 # `classifier_circuit_cooldown_seconds`, and `classify()` returns a degraded
@@ -208,7 +208,7 @@ def _coerce(payload: dict, model: str, latency_ms: int) -> ClassifierResult:
 
 async def classify(fields: dict[str, str]) -> ClassifierResult:
     settings = get_settings()
-    model = settings.openai_model
+    model = settings.groq_model
 
     if all(not v.strip() for v in fields.values()):
         # Nothing to classify is genuinely clean, not degraded — checked first
@@ -216,25 +216,33 @@ async def classify(fields: dict[str, str]) -> ClassifierResult:
         return ClassifierResult(confidence=0.0, signals=["no_untrusted_content"], model=model)
     if settings.classifier_offline:
         return ClassifierResult.degraded_result("offline_mode", model)
-    if not settings.openai_api_key:
-        log.error("OPENAI_API_KEY is not set; classifier fails closed")
+    if not settings.groq_api_key:
+        log.error("GROQ_API_KEY is not set; classifier fails closed")
         return ClassifierResult.degraded_result("missing_api_key", model)
     if _circuit_is_open():
         # Breaker is open after repeated failures — skip the dead wait entirely.
         return ClassifierResult.degraded_result("circuit_open", model)
 
-    from openai import AsyncOpenAI
+    from groq import AsyncGroq
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds)
+    client = AsyncGroq(api_key=settings.groq_api_key, timeout=settings.groq_timeout_seconds)
     nonce = secrets.token_hex(16)
     started = time.perf_counter()
+
+    # Reasoning models spend completion tokens on hidden reasoning before the
+    # JSON, so the ceiling is well above what the verdict itself needs — a
+    # budget that runs out reads as `truncated_response`, i.e. degraded, and
+    # would fail every payment closed.
+    extra: dict = {}
+    if settings.groq_reasoning_effort:
+        extra["reasoning_effort"] = settings.groq_reasoning_effort
 
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
                 model=model,
                 temperature=0,
-                max_tokens=400,
+                max_completion_tokens=2048,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": build_data_block(fields, nonce)},
@@ -247,11 +255,12 @@ async def classify(fields: dict[str, str]) -> ClassifierResult:
                         "schema": RESPONSE_SCHEMA,
                     },
                 },
+                **extra,
             ),
-            timeout=settings.openai_timeout_seconds + 1.0,
+            timeout=settings.groq_timeout_seconds + 1.0,
         )
     except asyncio.TimeoutError:
-        log.warning("classifier timed out after %.1fs", settings.openai_timeout_seconds)
+        log.warning("classifier timed out after %.1fs", settings.groq_timeout_seconds)
         _record_transport_failure()
         return ClassifierResult.degraded_result("timeout", model)
     except Exception as exc:
